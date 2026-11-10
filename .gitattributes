@@ -1,0 +1,6 @@
+# Shell scripts and container config must keep Unix line endings so they run on Linux servers.
+*.sh text eol=lf
+deploy/Caddyfile text eol=lf
+db/**/*.sql text eol=lf
+Dockerfile text eol=lf
+api/Dockerfile text eol=lf

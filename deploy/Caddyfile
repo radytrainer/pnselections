@@ -1,0 +1,37 @@
+# Single entry point: /api/* -> Node.js API, everything else -> Next.js.
+#
+# SITE_ADDRESS (from .env):
+#   ":80"                  plain HTTP (local, or behind an AWS ALB that terminates TLS)
+#   "tracker.example.org"  Caddy obtains and renews a Let's Encrypt certificate itself
+{
+	admin off
+	servers {
+		# Trust X-Forwarded-* from an ALB / load balancer inside the VPC.
+		trusted_proxies static private_ranges
+	}
+}
+
+{$SITE_ADDRESS::80} {
+	encode zstd gzip
+
+	request_body {
+		max_size 10MB
+	}
+
+	header {
+		-Server
+		Strict-Transport-Security "max-age=31536000"
+		X-Frame-Options "SAMEORIGIN"
+	}
+
+	handle /api/* {
+		reverse_proxy api:4000 {
+			# Stream Server-Sent Events (live committee votes) immediately.
+			flush_interval -1
+		}
+	}
+
+	handle {
+		reverse_proxy web:3000
+	}
+}

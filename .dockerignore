@@ -1,0 +1,16 @@
+**/node_modules
+.next
+out
+.git
+.env*
+!.env.example
+*.tsbuildinfo
+api
+db
+deploy
+scripts
+backups
+storage-data
+docs
+Dockerfile
+docker-compose*.yml

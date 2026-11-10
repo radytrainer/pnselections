@@ -1,0 +1,16 @@
+**/node_modules
+**/dist
+**/.next
+.git
+.env*
+storage-data
+backups
+app
+components
+features
+hooks
+lib
+public
+services
+types
+docs
