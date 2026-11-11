@@ -25,7 +25,7 @@ const battambang = Battambang({
 
 export const metadata: Metadata = {
   title: "Scholarship Selection Tracker",
-  description: "NGO Education Partnership — Cambodia scholarship selection tracker",
+  description: "Passerelles Numériques Cambodia — scholarship selection tracker",
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",

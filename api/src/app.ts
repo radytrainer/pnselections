@@ -3,6 +3,7 @@ import express, { type NextFunction, type Request, type Response } from "express
 import { requireAuth, requireRole } from "./auth";
 import { config } from "./config";
 import { pool } from "./db";
+import { idempotency } from "./idempotency";
 import { errorHandler } from "./errors";
 import { rateLimitHit, redis } from "./redis";
 import { adminRouter, sessionRouter } from "./routes/admin";
@@ -11,6 +12,8 @@ import { committeeRouter } from "./routes/committee";
 import { filesRouter, uploadsRouter } from "./routes/files";
 import { lookupsRouter } from "./routes/lookups";
 import { miscRouter } from "./routes/misc";
+import { adminToolsRouter } from "./routes/adminTools";
+import { offlineRouter } from "./routes/offline";
 import { partnersRouter } from "./routes/partners";
 import { reportsRouter } from "./routes/reports";
 import { studentsRouter } from "./routes/students";
@@ -34,7 +37,7 @@ export function createApp() {
       if (origin && config.corsOrigins.includes(origin)) {
         res.setHeader("Access-Control-Allow-Origin", origin);
         res.setHeader("Access-Control-Allow-Credentials", "true");
-        res.setHeader("Access-Control-Allow-Headers", "Authorization, Content-Type");
+        res.setHeader("Access-Control-Allow-Headers", "Authorization, Content-Type, Idempotency-Key");
         res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS");
         res.setHeader("Vary", "Origin");
       }
@@ -75,6 +78,8 @@ export function createApp() {
 
   const v1 = express.Router();
   v1.use(requireAuth);
+  v1.use(idempotency);
+  v1.use("/offline", offlineRouter);
   v1.use("/uploads", uploadsRouter);
   v1.use("/lookups", lookupsRouter);
   v1.use("/students", studentsRouter);
@@ -83,6 +88,7 @@ export function createApp() {
   v1.use(partnersRouter);
   v1.use(reportsRouter);
   v1.use(miscRouter);
+  v1.use(adminToolsRouter);
   app.use("/api/v1", v1);
 
   app.use("/api", (_req: Request, res: Response) => {

@@ -164,7 +164,7 @@ export async function saveSocialAssessment(input: SaveInput) {
   // match at that stage, and pre-0026 rows have visitor_id = null.
   const shouldUpdateStudent =
     statusChanged || (genderChanged && input.currentStatus !== "committee_review");
-  await api.post("/api/v1/social-assessments/save", {
+  const res = await api.post<{ queued?: boolean } | null>("/api/v1/social-assessments/save", {
     id: input.id,
     studentId: input.studentId,
     row,
@@ -176,5 +176,6 @@ export async function saveSocialAssessment(input: SaveInput) {
       : undefined,
   });
 
-  return score;
+  /** queued = saved on this device only, synced when back online. */
+  return { ...score, queued: !!res?.queued };
 }

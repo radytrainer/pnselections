@@ -29,13 +29,15 @@ export async function saveInterview(input: {
   const recommendation = computeGrade(total, maxScore);
   const nextStatus = advanceStatus(input.currentStatus, "interview_completed");
 
-  await api.put(`/api/v1/interviews/student/${input.studentId}`, {
+  const res = await api.put<{ queued?: boolean } | null>(`/api/v1/interviews/student/${input.studentId}`, {
     cycleId: input.cycleId,
     comments: formValues.comments || null,
     recommendation,
     answers: questionIds.map((questionId) => ({ questionId, score: formValues.answers[questionId] })),
     nextStatus: nextStatus !== input.currentStatus ? nextStatus : undefined,
   });
+  /** queued = saved on this device only, synced when back online. */
+  return { queued: !!res?.queued };
 }
 
 export type InterviewCategoryTotal = { label: string; total: number; max: number };

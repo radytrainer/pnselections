@@ -7,6 +7,8 @@ import type { AppRole } from "@/lib/constants";
  */
 export const CAPABILITIES = {
   manageUsers: ["super_admin"],
+  manageBackups: ["super_admin"],
+  viewAuditLogs: ["super_admin", "program_manager"],
   manageInterviewQuestions: ["super_admin"],
   manageCycles: ["super_admin", "program_manager"],
   managePartners: ["super_admin", "program_manager"],
@@ -25,7 +27,7 @@ export const CAPABILITIES = {
   // themselves recorded — this list alone doesn't capture that row-level rule.
   sendToCommittee: ["super_admin", "program_manager", "selection_team", "home_visit_team"],
   enterExamScores: ["super_admin", "program_manager", "selection_team"],
-  enterInterviewScores: ["super_admin", "program_manager", "interview_team"],
+  enterInterviewScores: ["super_admin", "program_manager", "interview_team", "selection_team"],
   enterHomeVisitData: ["super_admin", "program_manager", "home_visit_team", "selection_team"],
   recordCommitteeDecision: ["super_admin", "program_manager", "selection_team"],
   rateCommitteeCandidate: ["committee_member"],

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { MoreHorizontal, Pencil, Trash2, UserPlus } from "lucide-react";
 import {
@@ -30,6 +30,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
+import { SearchInput, matchesSearch } from "@/components/forms/SearchInput";
 
 type AdminUser = {
   id: string;
@@ -48,6 +49,15 @@ export default function AdminUsersPage() {
   const [editingUser, setEditingUser] = useState<AdminUser | null>(null);
   const [deletingUser, setDeletingUser] = useState<AdminUser | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [search, setSearch] = useState("");
+
+  const visibleUsers = useMemo(
+    () =>
+      users.filter((u) =>
+        matchesSearch(search, [u.full_name, u.email, u.role?.replace(/_/g, " "), u.status]),
+      ),
+    [users, search],
+  );
 
   const load = useCallback(() => {
     setLoading(true);
@@ -113,7 +123,7 @@ export default function AdminUsersPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-semibold">Users</h1>
           <p className="text-sm text-muted-foreground">Manage user accounts and roles.</p>
@@ -122,6 +132,20 @@ export default function AdminUsersPage() {
           <UserPlus className="size-4" />
           Create User
         </Button>
+      </div>
+
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <SearchInput
+          value={search}
+          onChange={setSearch}
+          placeholder="Search name, email or role..."
+          aria-label="Search users"
+        />
+        {!loading && (
+          <p className="text-sm text-muted-foreground" aria-live="polite">
+            {search ? `${visibleUsers.length} of ${users.length} users` : `${users.length} users`}
+          </p>
+        )}
       </div>
 
       {loading ? (
@@ -138,14 +162,14 @@ export default function AdminUsersPage() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {users.length === 0 ? (
+            {visibleUsers.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={5} className="text-center text-muted-foreground">
-                  No users yet.
+                <TableCell colSpan={5} className="h-24 text-center text-muted-foreground">
+                  {users.length === 0 ? "No users yet." : `No users match "${search}".`}
                 </TableCell>
               </TableRow>
             ) : (
-              users.map((u) => (
+              visibleUsers.map((u) => (
                 <TableRow key={u.id}>
                   <TableCell>{u.full_name}</TableCell>
                   <TableCell>{u.email}</TableCell>

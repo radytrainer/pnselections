@@ -8,6 +8,7 @@ import {
   computeTotal,
   computeMaxScore,
   computeGrade,
+  interviewResultLabel,
   type InterviewFormValues,
 } from "@/features/interview/schema";
 import type { InterviewCategoryWithQuestions } from "@/services/interviewQuestionService";
@@ -23,18 +24,6 @@ import {
 } from "@/components/ui/form";
 import { ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
-
-const GRADE_LABELS: Record<string, string> = {
-  A1: "A1 (≥ 60%)",
-  A2: "A2 (≥ 50%)",
-  not_recommended: "Not Recommended (< 50%)",
-};
-
-const GRADE_COLORS: Record<string, string> = {
-  A1: "text-green-700 bg-green-50 border-green-200",
-  A2: "text-green-700 bg-green-50 border-green-200",
-  not_recommended: "text-red-700 bg-red-50 border-red-200",
-};
 
 function ScoreSummary({
   categories,
@@ -73,19 +62,16 @@ function ScoreSummary({
           </div>
         ))}
       </div>
-      {grade && grade !== "not_recommended" && (
-        <div className="rounded border px-3 py-2 text-sm font-semibold text-center text-green-700 bg-green-50 border-green-200">
-          Passed Interview
-        </div>
-      )}
       {grade && (
         <div
           className={cn(
-            "rounded border px-3 py-1.5 text-sm font-medium text-center",
-            GRADE_COLORS[grade],
+            "rounded border px-3 py-2 text-sm font-semibold text-center",
+            grade === "not_recommended"
+              ? "text-red-700 bg-red-50 border-red-200"
+              : "text-green-700 bg-green-50 border-green-200",
           )}
         >
-          Grade: {GRADE_LABELS[grade]}
+          {interviewResultLabel(grade)} Interview
         </div>
       )}
     </div>

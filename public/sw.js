@@ -1,4 +1,4 @@
-const CACHE_NAME = "app-shell-v2";
+const CACHE_NAME = "app-shell-v4";
 const OFFLINE_URL = "/offline";
 
 self.addEventListener("install", (event) => {
@@ -50,11 +50,19 @@ self.addEventListener("fetch", (event) => {
           }
           return response;
         })
-        .catch(() =>
-          caches
-            .match(request)
-            .then((cached) => cached || (request.mode === "navigate" ? caches.match(OFFLINE_URL) : undefined)),
-        ),
+        .catch(async () => {
+          const cached = await caches.match(request, { ignoreVary: true });
+          if (cached) return cached;
+          if (request.mode === "navigate") {
+            // Field Mode pages take the student as ?studentId=, so the page
+            // shell cached for one student serves any other one offline.
+            const sameRoute = await caches.match(request, { ignoreSearch: true, ignoreVary: true });
+            return sameRoute || caches.match(OFFLINE_URL);
+          }
+          // e.g. a client-side navigation's data fetch: fail fast so Next.js
+          // falls back to a full page load, which the branch above serves.
+          return Response.error();
+        }),
     );
     return;
   }

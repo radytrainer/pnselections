@@ -20,7 +20,7 @@ sed -i.bak \
   -e "s|^REDIS_PASSWORD=.*|REDIS_PASSWORD=$(gen)|" \
   .env
 if [[ $# -ge 1 ]]; then
-  sed -i.bak -e "s|^SITE_ADDRESS=.*|SITE_ADDRESS=$1|" .env
+  sed -i.bak -e "s|^SITE_ADDRESS=.*|SITE_ADDRESS=\"$1\"|" .env
 fi
 rm -f .env.bak
 chmod 600 .env

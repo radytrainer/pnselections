@@ -44,12 +44,12 @@ export function getStudentColumns(
         const photoPath = pickLatestPhotoPath(row.original.student_documents);
         const initials = `${row.original.first_name[0] ?? ""}${row.original.last_name[0] ?? ""}`.toUpperCase();
         return (
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-2">
             <StudentAvatar
               photoPath={photoPath}
               signedUrl={photoPath ? photoUrls[photoPath] ?? null : null}
               initials={initials}
-              size="size-7"
+              size="size-9"
             />
             <Link href={`/students/${row.original.id}`} className="font-medium hover:underline">
               {row.original.first_name} {row.original.last_name}

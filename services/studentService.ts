@@ -23,6 +23,7 @@ export type StudentListItem = Student & {
     visit_number: number;
     age?: number | null;
     major?: "science" | "social_science" | null;
+    poverty_certificate?: string | null;
   }[];
   student_documents: { doc_type: string; file_path: string; uploaded_at: string }[];
 };

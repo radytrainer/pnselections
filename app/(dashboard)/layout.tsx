@@ -7,6 +7,7 @@ import { useRole } from "@/hooks/useRole";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { Topbar } from "@/components/layout/Topbar";
 import { Skeleton } from "@/components/ui/skeleton";
+import { OfflineSyncAgent } from "@/components/offline/OfflineSyncAgent";
 
 export default function DashboardLayout({
   children,
@@ -65,6 +66,7 @@ export default function DashboardLayout({
 
   return (
     <div className="flex h-screen overflow-hidden">
+      <OfflineSyncAgent />
       <Sidebar role={role} />
       <div className="flex flex-1 flex-col overflow-hidden">
         <Topbar />

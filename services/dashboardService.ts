@@ -20,9 +20,11 @@ export type DashboardData = {
 export type ProvinceStat = { provinceName: string; studentCount: number };
 export type NgoTotalStat = { ngoName: string; studentCount: number };
 
-export async function getDashboardData(): Promise<DashboardData> {
+/** `cycleId` limits it to one generation; omit it for every cycle. */
+export async function getDashboardData(cycleId?: string): Promise<DashboardData> {
   const res = await api.get<{ students: unknown[]; partnerNgos: number; partnerSchools: number }>(
     "/api/v1/dashboard",
+    { cycleId },
   );
 
   const students = (res.students as {
@@ -73,8 +75,8 @@ export type VisitorStat = { visitorName: string; studentCount: number };
  * never got a visitor_id — those fall back to whatever name was typed in,
  * or "Unknown" if neither is set.
  */
-export async function getVisitorStats(): Promise<VisitorStat[]> {
-  const rows = (await api.get<unknown[]>("/api/v1/dashboard/visitor-stats")) as {
+export async function getVisitorStats(cycleId?: string): Promise<VisitorStat[]> {
+  const rows = (await api.get<unknown[]>("/api/v1/dashboard/visitor-stats", { cycleId })) as {
     student_id: string;
     visitor_name: string | null;
     users: { full_name: string } | null;

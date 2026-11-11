@@ -1,19 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
-import {
-  AlertOctagon,
-  CheckCircle2,
-  ImageIcon,
-  Mars,
-  Rainbow,
-  RotateCcw,
-  Users,
-  Venus,
-  type LucideIcon,
-} from "lucide-react";
+import { CheckCircle2, RotateCcw } from "lucide-react";
 import {
   approveCommitteeDecision,
   listCommitteeQueue,
@@ -24,7 +14,7 @@ import {
 import { getMyProfile } from "@/services/userService";
 import { listHomeVisitors } from "@/services/studentService";
 import { listProvinces } from "@/services/lookupService";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
@@ -47,48 +37,8 @@ import { useCycleFilter } from "@/hooks/useCycleFilter";
 import { useAuth } from "@/hooks/useAuth";
 import { useRole } from "@/hooks/useRole";
 import { can } from "@/lib/rbac";
-import {
-  CATEGORY_BADGE_CLASSES,
-  CATEGORY_LABELS,
-  isFailedHomeVisit,
-  type SocialFormCategory,
-} from "@/features/social-form/scoring";
-import { StudentAvatar } from "@/components/students/StudentAvatar";
+import { CommitteeQueueCard } from "@/components/committee/CommitteeQueueCard";
 import { getSignedStudentDocumentUrls, pickLatestPhotoPath } from "@/lib/storage";
-import { CARD_COLOR_STYLES, type CardColor } from "@/lib/cardColors";
-import { cn } from "@/lib/utils";
-
-/** Tints each card by gender so a mixed grid is scannable at a glance. */
-const GENDER_META: Record<string, { icon: LucideIcon; color: CardColor }> = {
-  male: { icon: Mars, color: "blue" },
-  female: { icon: Venus, color: "pink" },
-  "lgbtqia+": { icon: Rainbow, color: "violet" },
-};
-
-function genderStyle(gender: string) {
-  const meta = GENDER_META[gender] ?? { icon: Users, color: "slate" as CardColor };
-  return { icon: meta.icon, ...CARD_COLOR_STYLES[meta.color] };
-}
-
-/** Eliminated cases sent to committee anyway still need to stand out from the gender tint. */
-function cardStyle(student: { gender: string; elimination_reason: string | null }) {
-  if (student.elimination_reason) return { icon: AlertOctagon, ...CARD_COLOR_STYLES.orange };
-  return genderStyle(student.gender);
-}
-
-const RECOMMENDATION_LABELS: Record<string, string> = {
-  strongly_recommend: "Strongly recommends",
-  recommend: "Recommends",
-  neutral: "Neutral",
-  not_recommend: "Does not recommend",
-};
-
-function ratingSummary(student: CommitteeQueueItem) {
-  if (student.committee_ratings.length === 0) return "No ratings yet";
-  const raters = new Set(student.committee_ratings.map((r) => r.rated_by)).size;
-  const avg = student.committee_ratings.reduce((sum, r) => sum + r.score, 0) / student.committee_ratings.length;
-  return `${avg.toFixed(1)}★ avg · ${raters} member${raters === 1 ? "" : "s"} rated`;
-}
 
 // home_visit_team doesn't decide — "Finished" clears their own cases from
 // the active queue once they've seen the committee's ratings. Local-only
@@ -110,7 +60,9 @@ type StoredFilterState = {
 export default function CommitteeQueuePage() {
   const { user } = useAuth();
   const { role } = useRole();
-  const { cycles, cycleId, setCycleId } = useCycleFilter();
+  const { cycles, cycleId, setCycleId, loading: cyclesLoading } = useCycleFilter();
+  // Only the newest request may update the list (switching cycles quickly must not show an older answer).
+  const loadSeq = useRef(0);
   const canSeeQueue = can(role, "viewCommitteeRatings") || can(role, "rateCommitteeCandidate");
   const isHomeVisit = role === "home_visit_team";
   const [myUserId, setMyUserId] = useState<string | null>(null);
@@ -160,10 +112,17 @@ export default function CommitteeQueuePage() {
   }, []);
 
   useEffect(() => {
+    if (cyclesLoading) return;
+    let cancelled = false;
     listHomeVisitors(cycleId || undefined)
-      .then(setHomeVisitors)
+      .then((names) => {
+        if (!cancelled) setHomeVisitors(names);
+      })
       .catch(() => {});
-  }, [cycleId]);
+    return () => {
+      cancelled = true;
+    };
+  }, [cycleId, cyclesLoading]);
 
   useEffect(() => {
     if (!isHomeVisit) return;
@@ -209,17 +168,22 @@ export default function CommitteeQueuePage() {
   const finishedQueue = isHomeVisit ? filteredQueue.filter((s) => finishedIds.includes(s.id)) : [];
 
   const load = useCallback(() => {
+    if (cyclesLoading) return Promise.resolve();
+    const seq = ++loadSeq.current;
     setLoading(true);
     return Promise.all([listCommitteeQueue(cycleId || undefined), listPendingApprovals(cycleId || undefined)])
       .then(async ([q, a]) => {
+        if (seq !== loadSeq.current) return;
         setQueue(q);
         setApprovals(a);
         const photoPaths = q.map((s) => pickLatestPhotoPath(s.student_documents)).filter((p): p is string => !!p);
         setPhotoUrls(await getSignedStudentDocumentUrls(photoPaths));
       })
       .catch((error) => toast.error(error instanceof Error ? error.message : "Failed to load committee queue"))
-      .finally(() => setLoading(false));
-  }, [cycleId]);
+      .finally(() => {
+        if (seq === loadSeq.current) setLoading(false);
+      });
+  }, [cycleId, cyclesLoading]);
 
   useEffect(() => {
     load();
@@ -325,125 +289,33 @@ export default function CommitteeQueuePage() {
           {activeQueue.length === 0 ? (
             <p className="text-sm text-muted-foreground">No students waiting on a committee decision.</p>
           ) : (
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
               {activeQueue.map((student) => {
-                const socialAssessment = student.social_assessments[0] ?? null;
                 const photoPath = pickLatestPhotoPath(student.student_documents);
-                const initials = `${student.first_name[0] ?? ""}${student.last_name[0] ?? ""}`.toUpperCase();
                 const canFinishThis = isHomeVisit && isOwnStudent(student);
-                const isEliminated = !!student.elimination_reason;
-                const { icon: GenderIcon, bg, ring, iconBg, iconText } = cardStyle(student);
-
                 return (
-                  <Link key={student.id} href={`/committee/${student.id}`} className="block">
-                    <Card
-                      className={cn(
-                        "relative h-full border-0 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md",
-                        bg,
-                        isEliminated ? "ring-2" : "ring-1",
-                        ring,
-                      )}
-                    >
-                      <div
-                        className={cn(
-                          "absolute top-3 right-3 flex size-6 items-center justify-center rounded-full",
-                          iconBg,
-                          iconText,
-                        )}
-                      >
-                        <GenderIcon className="size-3.5" />
-                      </div>
-                      <CardHeader className="flex flex-row items-start gap-3">
-                        <StudentAvatar
-                          photoPath={photoPath}
-                          signedUrl={photoPath ? photoUrls[photoPath] ?? null : null}
-                          initials={initials}
-                          size="size-10"
-                        />
-                        <div>
-                          <CardTitle className="text-base hover:underline">
-                            {student.first_name} {student.last_name}
-                          </CardTitle>
-                          <CardDescription>
-                            {student.student_code} · {student.provinces?.name_en ?? "No province"} ·{" "}
-                            {student.school_partners?.school_name ?? "No school"}
-                          </CardDescription>
-                        </div>
-                      </CardHeader>
-                      <CardContent className="space-y-2 text-xs text-muted-foreground">
-                        {isEliminated && (
-                          <div className="flex items-start gap-1.5 rounded-md bg-orange-100 px-2 py-1 text-xs font-medium text-orange-700">
-                            <AlertOctagon className="mt-0.5 size-3.5 shrink-0" />
-                            <span>Eliminated: {student.elimination_reason}</span>
-                          </div>
-                        )}
-                        <div className="flex flex-wrap items-center gap-1.5">
-                          {socialAssessment ? (
-                            <span
-                              className={cn(
-                                "rounded-full px-2 py-0.5 text-xs font-medium",
-                                isFailedHomeVisit(socialAssessment.final_score, socialAssessment.manual_failed)
-                                  ? "bg-red-100 text-red-700"
-                                  : CATEGORY_BADGE_CLASSES[socialAssessment.category as SocialFormCategory],
-                              )}
-                            >
-                              {isFailedHomeVisit(socialAssessment.final_score, socialAssessment.manual_failed)
-                                ? "Failed Home Visit"
-                                : CATEGORY_LABELS[socialAssessment.category as SocialFormCategory]}{" "}
-                              · {socialAssessment.final_score}
-                            </span>
-                          ) : (
-                            <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium">No social form</span>
-                          )}
-                          <span>GPA: <span className="text-foreground">{student.gpa ?? "—"}</span></span>
-                        </div>
-                        <p>
-                          Exam:{" "}
-                          <span className="text-foreground">
-                            {student.exam_results ? student.exam_results.total_score : "Pending"}
-                          </span>{" "}
-                          · Interview:{" "}
-                          <span className="text-foreground">
-                            {student.interviews?.recommendation
-                              ? RECOMMENDATION_LABELS[student.interviews.recommendation]
-                              : "Pending"}
-                          </span>
-                        </p>
-                        <p className="font-medium text-foreground">{ratingSummary(student)}</p>
-                      </CardContent>
-                      {(student.photo_drive_url || canFinishThis) && (
-                        <CardContent className="flex gap-2 pt-0">
-                          {student.photo_drive_url && (
-                            <a
-                              href={student.photo_drive_url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              onClick={(e) => e.stopPropagation()}
-                              className={buttonVariants({ size: "sm", variant: "outline", className: "flex-1 gap-1.5" })}
-                            >
-                              <ImageIcon className="size-3.5" />
-                              View Photos
-                            </a>
-                          )}
-                          {canFinishThis && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="flex-1 gap-1.5"
-                              onClick={(e) => {
-                                e.preventDefault();
-                                e.stopPropagation();
-                                handleFinish(student.id);
-                              }}
-                            >
-                              <CheckCircle2 className="size-3.5" />
-                              Finished
-                            </Button>
-                          )}
-                        </CardContent>
-                      )}
-                    </Card>
-                  </Link>
+                  <CommitteeQueueCard
+                    key={student.id}
+                    student={student}
+                    photoUrl={photoPath ? photoUrls[photoPath] ?? null : null}
+                    actions={
+                      canFinishThis && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-8 gap-1 rounded-lg"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            handleFinish(student.id);
+                          }}
+                        >
+                          <CheckCircle2 className="size-3.5" />
+                          Finished
+                        </Button>
+                      )
+                    }
+                  />
                 );
               })}
             </div>
@@ -454,101 +326,31 @@ export default function CommitteeQueuePage() {
       {isHomeVisit && finishedQueue.length > 0 && (
         <div className="space-y-3">
           <h2 className="text-lg font-medium text-muted-foreground">Finished Cases ({finishedQueue.length})</h2>
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
             {finishedQueue.map((student) => {
-              const socialAssessment = student.social_assessments[0] ?? null;
               const photoPath = pickLatestPhotoPath(student.student_documents);
-              const initials = `${student.first_name[0] ?? ""}${student.last_name[0] ?? ""}`.toUpperCase();
-              const isEliminated = !!student.elimination_reason;
-              const { icon: GenderIcon, bg, ring, iconBg, iconText } = cardStyle(student);
-
               return (
-                <Link key={student.id} href={`/committee/${student.id}`} className="block opacity-60">
-                  <Card className={cn("relative h-full border-0 shadow-sm", isEliminated ? "ring-2" : "ring-1", bg, ring)}>
-                    <div
-                      className={cn(
-                        "absolute top-3 right-3 flex size-6 items-center justify-center rounded-full",
-                        iconBg,
-                        iconText,
-                      )}
+                <CommitteeQueueCard
+                  key={student.id}
+                  student={student}
+                  photoUrl={photoPath ? photoUrls[photoPath] ?? null : null}
+                  muted
+                  actions={
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-8 gap-1 rounded-lg"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        handleUnfinish(student.id);
+                      }}
                     >
-                      <GenderIcon className="size-3.5" />
-                    </div>
-                    <CardHeader className="flex flex-row items-start gap-3">
-                      <StudentAvatar
-                        photoPath={photoPath}
-                        signedUrl={photoPath ? photoUrls[photoPath] ?? null : null}
-                        initials={initials}
-                        size="size-10"
-                      />
-                      <div>
-                        <CardTitle className="text-base hover:underline">
-                          {student.first_name} {student.last_name}
-                        </CardTitle>
-                        <CardDescription>
-                          {student.student_code} · {student.provinces?.name_en ?? "No province"} ·{" "}
-                          {student.school_partners?.school_name ?? "No school"}
-                        </CardDescription>
-                      </div>
-                    </CardHeader>
-                    <CardContent className="space-y-2 text-xs text-muted-foreground">
-                      {isEliminated && (
-                        <div className="flex items-start gap-1.5 rounded-md bg-orange-100 px-2 py-1 text-xs font-medium text-orange-700">
-                          <AlertOctagon className="mt-0.5 size-3.5 shrink-0" />
-                          <span>Eliminated: {student.elimination_reason}</span>
-                        </div>
-                      )}
-                      <div className="flex flex-wrap items-center gap-1.5">
-                        {socialAssessment ? (
-                          <span
-                            className={cn(
-                              "rounded-full px-2 py-0.5 text-xs font-medium",
-                              isFailedHomeVisit(socialAssessment.final_score, socialAssessment.manual_failed)
-                                ? "bg-red-100 text-red-700"
-                                : CATEGORY_BADGE_CLASSES[socialAssessment.category as SocialFormCategory],
-                            )}
-                          >
-                            {isFailedHomeVisit(socialAssessment.final_score, socialAssessment.manual_failed)
-                              ? "Failed Home Visit"
-                              : CATEGORY_LABELS[socialAssessment.category as SocialFormCategory]}{" "}
-                            · {socialAssessment.final_score}
-                          </span>
-                        ) : (
-                          <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium">No social form</span>
-                        )}
-                        <span>GPA: <span className="text-foreground">{student.gpa ?? "—"}</span></span>
-                      </div>
-                      <p className="font-medium text-foreground">{ratingSummary(student)}</p>
-                    </CardContent>
-                    <CardContent className="flex gap-2 pt-0">
-                      {student.photo_drive_url && (
-                        <a
-                          href={student.photo_drive_url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          onClick={(e) => e.stopPropagation()}
-                          className={buttonVariants({ size: "sm", variant: "outline", className: "flex-1 gap-1.5" })}
-                        >
-                          <ImageIcon className="size-3.5" />
-                          View Photos
-                        </a>
-                      )}
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="flex-1 gap-1.5"
-                        onClick={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          handleUnfinish(student.id);
-                        }}
-                      >
-                        <RotateCcw className="size-3.5" />
-                        Undo Finish
-                      </Button>
-                    </CardContent>
-                  </Card>
-                </Link>
+                      <RotateCcw className="size-3.5" />
+                      Undo
+                    </Button>
+                  }
+                />
               );
             })}
           </div>

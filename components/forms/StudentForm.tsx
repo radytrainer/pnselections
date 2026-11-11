@@ -8,7 +8,7 @@ import { CheckIcon, User, X } from "lucide-react";
 import { studentFormSchema, type StudentFormValues } from "@/features/students/schema";
 import { listProvinces, listSchools } from "@/services/lookupService";
 import { listNgos } from "@/services/ngoService";
-import { compressImageFile, validateStudentPhotoFile, MAX_IMAGE_BYTES } from "@/lib/storage";
+import { compressImageFile, validateStudentPhotoFile, MAX_STUDENT_PHOTO_BYTES } from "@/lib/storage";
 import { cn } from "@/lib/utils";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -105,7 +105,7 @@ export function StudentForm({
     }
 
     let finalFile = file;
-    if (file.size > MAX_IMAGE_BYTES) {
+    if (file.size > MAX_STUDENT_PHOTO_BYTES) {
       setIsProcessingPhoto(true);
       try {
         finalFile = await compressImageFile(file);

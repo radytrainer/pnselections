@@ -34,6 +34,8 @@ import {
   type VisitorStat,
 } from "@/services/dashboardService";
 import { getNgoYearlyStats, type NgoYearlyStat } from "@/services/ngoService";
+import { CycleSelect } from "@/components/forms/CycleSelect";
+import { useCycleFilter } from "@/hooks/useCycleFilter";
 import { cn } from "@/lib/utils";
 import { CARD_COLOR_STYLES, type CardColor } from "@/lib/cardColors";
 import { StudentDetailDrawer } from "@/components/dashboard/StudentDetailDrawer";
@@ -70,8 +72,16 @@ export default function DashboardPage() {
   const [genderFilter, setGenderFilter] = useState<GenderFilter>("");
   const [activeDetail, setActiveDetail] = useState<DecisionStatus | null>(null);
 
+  // Defaults to the active cycle so one generation's numbers aren't mixed
+  // with the next; "All Cycles" is still available for comparisons.
+  const { cycles, cycleId, setCycleId, loading: cyclesLoading } = useCycleFilter();
+
   useEffect(() => {
-    Promise.all([getDashboardData(), getNgoYearlyStats(), getVisitorStats()])
+    if (cyclesLoading) return;
+    setLoading(true);
+    const cycle = cycleId || undefined;
+    // NGO yearly trends compare cycles by design, so they always cover every cycle.
+    Promise.all([getDashboardData(cycle), getNgoYearlyStats(), getVisitorStats(cycle)])
       .then(([d, y, v]) => {
         setStudents(d.students);
         setPartnerNgos(d.partnerNgos);
@@ -81,7 +91,7 @@ export default function DashboardPage() {
       })
       .catch((error) => toast.error(error instanceof Error ? error.message : "Failed to load dashboard"))
       .finally(() => setLoading(false));
-  }, []);
+  }, [cycleId, cyclesLoading]);
 
   // Gender counts — always absolute (unfiltered), used for the filter cards
   const genderCounts = useMemo(() => ({
@@ -133,11 +143,14 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold">Executive Dashboard</h1>
-        <p className="text-sm text-muted-foreground">
-          Program KPIs and NGO referral trends across selection cycles.
-        </p>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold">Executive Dashboard</h1>
+          <p className="text-sm text-muted-foreground">
+            Program KPIs for the selected cycle, and NGO referral trends across cycles.
+          </p>
+        </div>
+        <CycleSelect cycles={cycles} value={cycleId} allowAll onChange={setCycleId} className="w-full sm:w-56" />
       </div>
 
       {/* Gender filter cards — click to filter every KPI + chart below */}

@@ -18,7 +18,7 @@ export async function saveExamResult(input: {
   computerScore: number;
 }) {
   const nextStatus = advanceStatus(input.currentStatus, "exam_completed");
-  await api.put(`/api/v1/exams/${input.studentId}`, {
+  const res = await api.put<{ queued?: boolean } | null>(`/api/v1/exams/${input.studentId}`, {
     cycleId: input.cycleId,
     mathScore: input.mathScore,
     englishScore: input.englishScore,
@@ -26,4 +26,6 @@ export async function saveExamResult(input: {
     computerScore: input.computerScore,
     nextStatus: nextStatus !== input.currentStatus ? nextStatus : undefined,
   });
+  /** queued = saved on this device only, synced when back online. */
+  return { queued: !!res?.queued };
 }

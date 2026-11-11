@@ -22,6 +22,24 @@ export function getMajor(student: Pick<StudentListItem, "social_assessments">): 
   return labelFor(MAJOR_OPTS, getLatestVisit(student)?.major);
 }
 
+/** yes = has a certificate (any level), no = doesn't have one, none = question left empty. */
+export type PovertyCertificateStatus = "yes" | "no" | "none";
+
+/**
+ * The social form's "Poverty Certificate?" is free text ("Yes", "Yes 2", "2",
+ * "Level 1", "No, doesn't have", "Used to have poor card", ...). Any yes-answer
+ * or level number means they have one; anything else written (no, used to
+ * have, ...) means they don't have one now.
+ */
+export function getPovertyCertificateStatus(
+  student: Pick<StudentListItem, "social_assessments">,
+): PovertyCertificateStatus {
+  const value = getLatestVisit(student)?.poverty_certificate?.trim().toLowerCase() ?? "";
+  if (!value) return "none";
+  if (/^(yes|y\b|\d|level|lv)/.test(value)) return "yes";
+  return "no";
+}
+
 export function isAgeOutOfRange(age: number | null): boolean {
   return age != null && (age < MIN_ELIGIBLE_AGE || age > MAX_ELIGIBLE_AGE);
 }

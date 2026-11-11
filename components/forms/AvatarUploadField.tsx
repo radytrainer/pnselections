@@ -20,7 +20,7 @@ export function AvatarUploadField({
       onChange={onChange}
       fallback={fallback}
       accept="image/png,image/jpeg,image/webp"
-      hint="PNG, JPEG, or WebP — up to 2MB."
+      hint="PNG, JPEG, or WebP. Large phone photos are resized automatically."
       upload={(file) => uploadAvatar(file, firebaseUid)}
       avatarClassName="size-20"
     />

@@ -84,7 +84,7 @@ else
   gen() { openssl rand -hex 24; }
   awk -v site="${DOMAIN:-:80}" -v pg="$(gen)" -v app="$(gen)" -v rd="$(gen)" '
     NR == FNR { if (match($0, /^[A-Z0-9_]+=/)) { k = substr($0, 1, RLENGTH - 1); if (k ~ /FIREBASE/) src[k] = $0 } next }
-    /^SITE_ADDRESS=/      { print "SITE_ADDRESS=" site; next }
+    /^SITE_ADDRESS=/      { print "SITE_ADDRESS=\"" site "\""; next }
     /^POSTGRES_PASSWORD=/ { print "POSTGRES_PASSWORD=" pg; next }
     /^APP_DB_PASSWORD=/   { print "APP_DB_PASSWORD=" app; next }
     /^REDIS_PASSWORD=/    { print "REDIS_PASSWORD=" rd; next }
@@ -116,7 +116,7 @@ if [[ -n "$DATA" ]]; then
 fi
 
 URL="http://${HOST}"
-[[ -n "$DOMAIN" ]] && URL="https://${DOMAIN}"
+[[ -n "$DOMAIN" ]] && URL="https://$(echo "${DOMAIN%%,*}" | tr -d '[:space:]')"  # first domain if several
 echo
 echo "==> Checking ${URL}/api/health"
 sleep 3

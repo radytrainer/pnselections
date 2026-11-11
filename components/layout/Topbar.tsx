@@ -25,6 +25,9 @@ import {
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { SidebarNav } from "@/components/layout/Sidebar";
 import { initials } from "@/lib/initials";
+import { LogoMark } from "@/components/layout/Logo";
+import { OfflineIndicator } from "@/components/offline/OfflineIndicator";
+import { clearOfflineData, listOutbox } from "@/lib/offline/store";
 
 export function Topbar() {
   const { user } = useAuth();
@@ -33,6 +36,17 @@ export function Topbar() {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   async function handleSignOut() {
+    const unsynced = (await listOutbox()).length;
+    if (
+      unsynced > 0 &&
+      !confirm(
+        `${unsynced} offline change${unsynced === 1 ? " has" : "s have"} not been synced yet and will be lost if you sign out. Sign out anyway?`,
+      )
+    ) {
+      return;
+    }
+    // Student data downloaded for offline use must not stay on a shared device.
+    await clearOfflineData();
     await signOut(getFirebaseAuth());
     router.replace("/login");
   }
@@ -56,6 +70,7 @@ export function Topbar() {
             {role.replace(/_/g, " ")}
           </Badge>
         )}
+        <OfflineIndicator />
       </div>
 
       <DropdownMenu>
@@ -98,7 +113,8 @@ export function Topbar() {
           showCloseButton={false}
           className="top-0 left-0 h-full w-72 max-w-[85%] translate-x-0 translate-y-0 grid-rows-[auto_1fr] gap-4 rounded-none border-r p-4 data-open:slide-in-from-left data-open:zoom-in-100 data-closed:slide-out-to-left data-closed:zoom-out-100"
         >
-          <DialogTitle className="px-2 text-sm font-semibold tracking-tight">
+          <DialogTitle className="flex items-center gap-2 px-2 text-sm font-semibold tracking-tight">
+            <LogoMark className="size-7" />
             PNC Selection
           </DialogTitle>
           <SidebarNav role={role} onNavigate={() => setMobileNavOpen(false)} />

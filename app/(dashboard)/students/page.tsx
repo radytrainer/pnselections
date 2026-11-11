@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
 import {
@@ -52,7 +52,11 @@ type StoredListState = {
 export default function StudentsPage() {
   const { user } = useAuth();
   const { role } = useRole();
-  const { cycles, cycleId, setCycleId } = useCycleFilter();
+  const { cycles, cycleId, setCycleId, loading: cyclesLoading } = useCycleFilter();
+  // Only the newest request may update the page (an older, slower answer for
+  // another cycle/filter must not overwrite it).
+  const listSeq = useRef(0);
+  const countSeq = useRef(0);
   const [myUserId, setMyUserId] = useState<string | null>(null);
   const [data, setData] = useState<StudentListItem[]>([]);
   const [photoUrls, setPhotoUrls] = useState<Record<string, string>>({});
@@ -103,10 +107,17 @@ export default function StudentsPage() {
   }, []);
 
   useEffect(() => {
+    if (cyclesLoading) return;
+    let cancelled = false;
     listHomeVisitors(cycleId || undefined)
-      .then(setHomeVisitors)
+      .then((names) => {
+        if (!cancelled) setHomeVisitors(names);
+      })
       .catch(() => {});
-  }, [cycleId]);
+    return () => {
+      cancelled = true;
+    };
+  }, [cycleId, cyclesLoading]);
 
   useEffect(() => {
     if (!user) return;
@@ -116,6 +127,7 @@ export default function StudentsPage() {
   const ngoIds = ngoName ? ngoOptions.find((n) => n.name === ngoName)?.ids : undefined;
 
   const fetchStudents = useCallback(async () => {
+    const seq = ++listSeq.current;
     setLoading(true);
     try {
       const result = await listStudents({
@@ -128,26 +140,29 @@ export default function StudentsPage() {
         ngoIds,
         cycleId: cycleId || undefined,
       });
+      if (seq !== listSeq.current) return;
       setData(result.data);
       setTotal(result.total);
       const photoPaths = result.data
         .map((s) => pickLatestPhotoPath(s.student_documents))
         .filter((p): p is string => !!p);
-      setPhotoUrls(await getSignedStudentDocumentUrls(photoPaths));
+      const urls = await getSignedStudentDocumentUrls(photoPaths);
+      if (seq === listSeq.current) setPhotoUrls(urls);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to load students");
     } finally {
-      setLoading(false);
+      if (seq === listSeq.current) setLoading(false);
     }
   }, [page, search, status, homeVisitor, provinceId, ngoIds, cycleId]);
 
   useEffect(() => {
-    if (!restored) return;
+    if (!restored || cyclesLoading) return;
     fetchStudents();
-  }, [restored, fetchStudents]);
+  }, [restored, cyclesLoading, fetchStudents]);
 
   useEffect(() => {
-    if (!restored) return;
+    if (!restored || cyclesLoading) return;
+    const seq = ++countSeq.current;
     getStudentGenderCounts({
       search: search || undefined,
       status: status || undefined,
@@ -156,9 +171,11 @@ export default function StudentsPage() {
       ngoIds,
       cycleId: cycleId || undefined,
     })
-      .then(setGenderCounts)
+      .then((counts) => {
+        if (seq === countSeq.current) setGenderCounts(counts);
+      })
       .catch(() => {});
-  }, [restored, search, status, homeVisitor, provinceId, ngoIds, cycleId]);
+  }, [restored, cyclesLoading, search, status, homeVisitor, provinceId, ngoIds, cycleId]);
 
   return (
     <div className="space-y-6">

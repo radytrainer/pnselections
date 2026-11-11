@@ -10,12 +10,16 @@ import { Params, qs, toOne } from "./util";
 export const reportsRouter = Router();
 
 reportsRouter.get("/dashboard", async (req, res) => {
+  const cycleId = qs(req, "cycleId");
   const result = await asUser(req, async (db) => {
+    const params = new Params();
+    const cycleFilter = cycleId ? ` and s.cycle_id = ${params.add(cycleId)}` : "";
     const students = await db.rows(
       `select s.id, s.first_name, s.last_name, s.gender, s.status, s.elimination_reason,
          ${toOne("provinces", "p", ["name_en"], "p.id = s.province_id", "provinces")},
          ${toOne("ngo_partners", "np", ["organization_name"], "np.id = s.referred_by_ngo_id", "ngo_partners")}
-       from students s where s.deleted_at is null`,
+       from students s where s.deleted_at is null${cycleFilter}`,
+      params.values,
     );
     const partnerNgos = await db.value<number>("select count(*) from ngo_partners where deleted_at is null");
     const partnerSchools = await db.value<number>("select count(*) from school_partners where deleted_at is null");
@@ -25,12 +29,16 @@ reportsRouter.get("/dashboard", async (req, res) => {
 });
 
 reportsRouter.get("/dashboard/visitor-stats", async (req, res) => {
+  const cycleId = qs(req, "cycleId");
+  const params = new Params();
+  const cycleFilter = cycleId ? ` where sa.cycle_id = ${params.add(cycleId)}` : "";
   const rows = await asUser(req, (db) =>
     db.rows(
       `select sa.student_id, sa.visitor_name,
          ${toOne("users", "u", ["full_name"], "u.id = sa.visitor_id", "users")},
          ${toOne("students", "s", ["deleted_at"], "s.id = sa.student_id", "students")}
-       from social_assessments sa`,
+       from social_assessments sa${cycleFilter}`,
+      params.values,
     ),
   );
   res.json(rows);

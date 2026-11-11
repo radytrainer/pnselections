@@ -52,6 +52,16 @@ export function hasPassed(total: number, maxScore: number): boolean {
   return maxScore > 0 && total / maxScore >= 0.5;
 }
 
+/**
+ * What staff see after an interview: just Passed or Failed. The stored
+ * `recommendation` keeps its A1/A2/not_recommended value (A1 and A2 = passed),
+ * so older records and reports keep working.
+ */
+export function interviewResultLabel(recommendation: string | null | undefined): "Passed" | "Failed" | null {
+  if (!recommendation) return null;
+  return recommendation === "not_recommended" ? "Failed" : "Passed";
+}
+
 export const interviewQuestionFormSchema = z.object({
   categoryId: z.string().min(1, "Select a category"),
   textEn: z.string().min(1, "English text is required"),

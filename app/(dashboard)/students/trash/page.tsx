@@ -11,6 +11,17 @@ import {
 } from "@/services/studentService";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { emptyTrash } from "@/services/adminToolsService";
 import { useRole } from "@/hooks/useRole";
 import { can } from "@/lib/rbac";
 
@@ -19,6 +30,9 @@ export default function StudentsTrashPage() {
   const [data, setData] = useState<StudentListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [emptyOpen, setEmptyOpen] = useState(false);
+  const [confirmText, setConfirmText] = useState("");
+  const [emptying, setEmptying] = useState(false);
 
   const canView = can(role, "viewTrash");
   const canDeleteForever = can(role, "permanentlyDeleteStudents");
@@ -72,19 +86,87 @@ export default function StudentsTrashPage() {
     }
   }
 
+  async function handleEmptyTrash() {
+    setEmptying(true);
+    try {
+      const { deleted } = await emptyTrash();
+      toast.success(`${deleted} student${deleted === 1 ? "" : "s"} permanently deleted`);
+      setEmptyOpen(false);
+      await fetchDeleted();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to empty the trash");
+    } finally {
+      setEmptying(false);
+    }
+  }
+
   if (!canView) {
     return <p className="text-sm text-muted-foreground">You don&apos;t have permission to view this page.</p>;
   }
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold">Trash</h1>
-        <p className="text-sm text-muted-foreground">
-          Deleted students. Restore them, or{" "}
-          {canDeleteForever ? "erase them permanently" : "ask a super admin to erase them permanently"}.
-        </p>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold">Trash</h1>
+          <p className="text-sm text-muted-foreground">
+            Deleted students. Restore them, or{" "}
+            {canDeleteForever ? "erase them permanently" : "ask a super admin to erase them permanently"}.
+          </p>
+        </div>
+        {canDeleteForever && data.length > 0 && (
+          <Button
+            variant="destructive"
+            size="sm"
+            className="gap-1.5"
+            onClick={() => {
+              setConfirmText("");
+              setEmptyOpen(true);
+            }}
+          >
+            <Trash2 className="size-4" />
+            Delete all ({data.length})
+          </Button>
+        )}
       </div>
+
+      <Dialog open={emptyOpen} onOpenChange={(open) => !emptying && setEmptyOpen(open)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete all {data.length} students permanently?</DialogTitle>
+            <DialogDescription>
+              Every student in the trash will be erased, together with their exam, interview, home visit, committee
+              and document records. This cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Label htmlFor="confirm-empty" className="text-sm">
+              Type <span className="font-mono font-semibold">DELETE</span> to confirm
+            </Label>
+            <Input
+              id="confirm-empty"
+              value={confirmText}
+              onChange={(e) => setConfirmText(e.target.value)}
+              autoComplete="off"
+              autoFocus
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEmptyOpen(false)} disabled={emptying}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleEmptyTrash}
+              disabled={confirmText !== "DELETE" || emptying}
+              className="gap-1.5"
+            >
+              <Trash2 className="size-4" />
+              {emptying ? "Deleting..." : `Delete ${data.length} forever`}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {loading ? (
         <p className="text-sm text-muted-foreground">Loading...</p>

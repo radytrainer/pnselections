@@ -2,7 +2,7 @@ import { Router, type Request } from "express";
 import { z } from "zod";
 import { asUser } from "../auth";
 import type { Db } from "../db";
-import { badRequest, HttpError, notFound } from "../errors";
+import { badRequest, forbidden, HttpError, notFound } from "../errors";
 import { deleteRows, insertRow, updateRows } from "../sql";
 import { isUuid, Params, qs, toMany, toOne, uuidParam } from "./util";
 
@@ -132,7 +132,7 @@ studentsRouter.get("/finalists", async (req, res) => {
     return db.rows(
       `select s.*, ${PROVINCE}, ${SCHOOL}, ${NGO},
          ${toOne("committee_decisions", "cd", ["decision", "poor_level"], `cd.student_id = s.id and cd.decision = ${d}`, "committee_decisions")},
-         ${toMany("social_assessments", "sa", ["age", "major", "visit_number"], "sa.student_id = s.id", "social_assessments")}
+         ${toMany("social_assessments", "sa", ["age", "major", "poverty_certificate", "visit_number"], "sa.student_id = s.id", "social_assessments")}
        from students s
        where s.deleted_at is null
          and exists (select 1 from committee_decisions cd where cd.student_id = s.id and cd.decision = ${d})${cycleFilter}
@@ -148,6 +148,20 @@ studentsRouter.get("/trash", async (req, res) => {
     db.rows(`select ${listSelect()} from students s where s.deleted_at is not null order by s.deleted_at desc`),
   );
   res.json(rows);
+});
+
+/**
+ * Trash → Delete all: permanently deletes every student currently in the
+ * trash, in one transaction (all or nothing). Same RLS as the single delete
+ * (0042: super_admin only); the role check just gives a clear error first.
+ */
+studentsRouter.post("/trash/empty", async (req, res) => {
+  if (req.user?.role !== "super_admin") throw forbidden();
+  const deleted = await asUser(req, async (db) => {
+    const result = await db.exec("delete from students where deleted_at is not null");
+    return result.rowCount ?? 0;
+  });
+  res.json({ deleted });
 });
 
 /** Next sequential student code for a cycle year, e.g. ST-26-0123 (see the original note in services/studentService.ts). */

@@ -7,7 +7,7 @@ import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { signInWithEmailAndPassword } from "firebase/auth";
 import { toast } from "sonner";
-import { MapPinned, ShieldCheck, Users2 } from "lucide-react";
+import { Eye, EyeOff, MapPinned, ShieldCheck, Users2 } from "lucide-react";
 import { getFirebaseAuth } from "@/lib/firebase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -19,7 +19,7 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
-import { Logo, LogoMark } from "@/components/layout/Logo";
+import { Logo } from "@/components/layout/Logo";
 
 const loginSchema = z.object({
   email: z.string().email("Enter a valid email address"),
@@ -49,6 +49,7 @@ const HIGHLIGHTS = [
 export default function LoginPage() {
   const router = useRouter();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   const form = useForm<LoginValues>({
     resolver: zodResolver(loginSchema),
@@ -106,11 +107,8 @@ export default function LoginPage() {
           className="absolute -bottom-32 -left-16 size-80 rounded-full bg-white/10 blur-3xl"
         />
 
-        <div className="relative z-10 flex items-center gap-2.5">
-          <LogoMark className="size-9" />
-          <span className="text-sm font-medium text-primary-foreground/80">
-            NGO Education Partnership
-          </span>
+        <div className="relative z-10">
+          <Logo tone="light" showProduct={false} logoClassName="h-16" className="items-start" />
         </div>
 
         <div className="relative z-10 max-w-md space-y-8">
@@ -139,7 +137,7 @@ export default function LoginPage() {
         </div>
 
         <p className="relative z-10 text-xs text-primary-foreground/60">
-          © {new Date().getFullYear()} NGO Education Partnership. Internal use only.
+          © {new Date().getFullYear()} Passerelles Numériques Cambodia. Internal use only.
         </p>
       </div>
 
@@ -147,7 +145,7 @@ export default function LoginPage() {
       <div className="flex flex-1 flex-col justify-center px-6 py-12 sm:px-12 lg:px-16">
         <div className="mx-auto w-full max-w-sm space-y-8">
           <div className="flex flex-col items-center space-y-2 text-center">
-            <Logo className="mb-2" />
+            <Logo className="mb-4" logoClassName="h-16" />
             <h2 className="text-2xl font-semibold tracking-tight">Welcome back</h2>
             <p className="text-sm text-muted-foreground">
               Sign in to continue to your dashboard.
@@ -181,9 +179,25 @@ export default function LoginPage() {
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Password</FormLabel>
-                      <FormControl>
-                        <Input type="password" autoComplete="current-password" {...field} />
-                      </FormControl>
+                      <div className="relative">
+                        <FormControl>
+                          <Input
+                            type={showPassword ? "text" : "password"}
+                            autoComplete="current-password"
+                            className="pr-10"
+                            {...field}
+                          />
+                        </FormControl>
+                        <button
+                          type="button"
+                          onClick={() => setShowPassword((v) => !v)}
+                          aria-label={showPassword ? "Hide password" : "Show password"}
+                          aria-pressed={showPassword}
+                          className="absolute inset-y-0 right-0 flex items-center rounded-r-lg px-3 text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        >
+                          {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                        </button>
+                      </div>
                       <FormMessage />
                     </FormItem>
                   )}

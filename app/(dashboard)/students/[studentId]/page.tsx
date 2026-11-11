@@ -45,12 +45,8 @@ import { useAuth } from "@/hooks/useAuth";
 import { useRole } from "@/hooks/useRole";
 import { can } from "@/lib/rbac";
 import { cn } from "@/lib/utils";
+import { interviewResultLabel } from "@/features/interview/schema";
 
-const RECOMMENDATION_LABELS: Record<string, string> = {
-  A1: "A1",
-  A2: "A2",
-  not_recommended: "Not Recommended",
-};
 
 /** Interview categories are admin-managed now (no longer a fixed 3), so icons rotate through this list rather than being tied to specific category names. */
 const CATEGORY_ICONS: LucideIcon[] = [GraduationCap, HeartHandshake, UsersRound, Award];
@@ -242,7 +238,15 @@ export default function StudentDetailPage() {
 
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="flex items-start gap-3">
-          <StudentAvatar photoPath={photoPath} initials={initials} size="size-12" className="text-base" />
+          <StudentAvatar
+            photoPath={photoPath}
+            initials={initials}
+            shape="square"
+            size="size-24 sm:size-28"
+            className="text-2xl"
+            zoomable
+            alt={`${student.first_name} ${student.last_name}`}
+          />
           <div>
             <h1 className="text-xl font-semibold sm:text-2xl">
               {student.first_name} {student.last_name}
@@ -418,9 +422,16 @@ export default function StudentDetailPage() {
         <TabsContent value="interview" className="mt-4 space-y-4">
           {interviewSummary ? (
             <>
-              {interviewSummary.recommendation && interviewSummary.recommendation !== "not_recommended" && (
-                <div className="rounded-lg border px-4 py-3 text-sm font-semibold text-center text-green-700 bg-green-50 border-green-200">
-                  Passed Interview
+              {interviewSummary.recommendation && (
+                <div
+                  className={cn(
+                    "rounded-lg border px-4 py-3 text-sm font-semibold text-center",
+                    interviewSummary.recommendation === "not_recommended"
+                      ? "text-red-700 bg-red-50 border-red-200"
+                      : "text-green-700 bg-green-50 border-green-200",
+                  )}
+                >
+                  {interviewResultLabel(interviewSummary.recommendation)} Interview
                 </div>
               )}
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -434,11 +445,8 @@ export default function StudentDetailPage() {
                   />
                 ))}
               </div>
-              <SectionCard icon={Mic} title="Grade" description="Computed from self-assessment total">
-                <Field
-                  label="Grade"
-                  value={interviewSummary.recommendation ? RECOMMENDATION_LABELS[interviewSummary.recommendation] : "—"}
-                />
+              <SectionCard icon={Mic} title="Result" description="Pass mark: 50% of the total score">
+                <Field label="Result" value={interviewResultLabel(interviewSummary.recommendation) ?? "—"} />
                 {interviewSummary.comments && (
                   <div className="py-1.5 text-sm">
                     <p className="text-muted-foreground">Comments</p>

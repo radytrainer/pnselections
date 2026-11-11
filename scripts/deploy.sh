@@ -47,7 +47,7 @@ echo "==> Starting database + cache"
 "${COMPOSE[@]}" up -d postgres redis
 
 echo "==> Running migrations"
-"${COMPOSE[@]}" run --rm --no-build migrate
+"${COMPOSE[@]}" run --rm migrate
 
 echo "==> Starting api, web, caddy"
 "${COMPOSE[@]}" up -d --no-build --remove-orphans api web caddy

@@ -15,6 +15,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { MapFilterGroup } from "@/components/map/MapFilterGroup";
 import { MapLegend } from "@/components/map/MapLegend";
 import { MapTotals } from "@/components/map/MapTotals";
+import { CycleSelect } from "@/components/forms/CycleSelect";
+import { useCycleFilter } from "@/hooks/useCycleFilter";
 import type { MapGenderFilter, MapLayerFilter } from "@/components/map/CambodiaMap";
 
 const CambodiaMap = dynamic(
@@ -65,9 +67,12 @@ export default function MapPage() {
     }
   }
 
+  const { cycles, cycleId, setCycleId, loading: cyclesLoading } = useCycleFilter();
+
   const loadMapData = useCallback(() => {
+    if (cyclesLoading) return;
     setLoading(true);
-    return Promise.all([getProvinceStats(), getMapPartners()])
+    return Promise.all([getProvinceStats(cycleId || undefined), getMapPartners()])
       .then(([provinceStats, partners]) => {
         setStats(provinceStats);
         setNgos(partners.ngos);
@@ -75,7 +80,7 @@ export default function MapPage() {
       })
       .catch((error) => toast.error(error instanceof Error ? error.message : "Failed to load map data"))
       .finally(() => setLoading(false));
-  }, []);
+  }, [cycleId, cyclesLoading]);
 
   useEffect(() => {
     loadMapData();
@@ -84,7 +89,7 @@ export default function MapPage() {
   const totalStudents = useMemo(() => stats.reduce((sum, p) => sum + p.totalStudents, 0), [stats]);
 
   return (
-    <div ref={containerRef} className="relative h-full w-full overflow-hidden rounded-lg border bg-background">
+    <div ref={containerRef} className="relative isolate h-full w-full overflow-hidden rounded-lg border bg-background">
       {loading ? (
         <Skeleton className="h-full w-full" />
       ) : (
@@ -99,6 +104,13 @@ export default function MapPage() {
       )}
 
       <div className="absolute top-3 left-3 z-[1000] flex flex-col items-start gap-3">
+        <CycleSelect
+          cycles={cycles}
+          value={cycleId}
+          allowAll
+          onChange={setCycleId}
+          className="w-48 bg-background/95 shadow-sm backdrop-blur"
+        />
         <div className="space-y-1">
           <p className="px-0.5 text-xs font-medium text-muted-foreground">Show</p>
           <MapFilterGroup

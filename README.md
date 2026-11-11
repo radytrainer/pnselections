@@ -47,6 +47,22 @@ docker compose exec postgres psql -U postgres scholarship
 ./scripts/backup-db.sh
 ```
 
+## Field Mode (offline)
+
+Home-visit, exam and interview teams can work without internet:
+
+1. **While online:** sign in, open **Field Mode (Offline)** in the sidebar, and press **Download for offline**. This saves this cycle's students, the form questions and the app itself on the device.
+2. **In the field:** open Field Mode and pick a student. The **social form**, **exam** and **interview** forms, plus eliminate/undo elimination, save to the device.
+3. **Back online:** changes sync automatically. A chip in the top bar shows how many are waiting, and any that the server rejected can be retried or discarded there.
+
+How it works:
+- `lib/offline/`: the IndexedDB cache, the outbox and the sync engine.
+- `/api/v1/offline/bundle`: the download endpoint.
+- `api/src/idempotency.ts`: makes retries safe, so a change sent twice is saved once.
+- Permissions are still checked by the server when changes sync.
+- Committee votes and decisions, user admin and partner editing need a connection.
+- Offline data is wiped from the device on sign-out.
+
 ## Local development (hot reload)
 
 ```bash

@@ -1,6 +1,8 @@
 import { api, API_BASE_URL } from "@/lib/api/client";
 
 export const MAX_IMAGE_BYTES = 2 * 1024 * 1024;
+/** Student photos may be larger (the API accepts up to 5MB) so they stay sharp. */
+export const MAX_STUDENT_PHOTO_BYTES = 5 * 1024 * 1024;
 const ALLOWED_LOGO_TYPES = ["image/png", "image/jpeg", "image/webp", "image/svg+xml"];
 const ALLOWED_AVATAR_TYPES = ["image/png", "image/jpeg", "image/webp"];
 const ALLOWED_STUDENT_PHOTO_TYPES = ["image/png", "image/jpeg", "image/webp"];
@@ -29,21 +31,25 @@ export function validateStudentPhotoFile(file: File): string | null {
   if (!ALLOWED_STUDENT_PHOTO_TYPES.includes(file.type)) {
     return "Photo must be a PNG, JPEG, or WebP image.";
   }
-  if (file.size > MAX_IMAGE_BYTES) {
-    return "Photo must be 2MB or smaller.";
+  if (file.size > MAX_STUDENT_PHOTO_BYTES) {
+    return "Photo must be 5MB or smaller.";
   }
   return null;
 }
 
 /**
- * Re-encodes an oversized photo as JPEG, scaling it down and stepping down
- * quality until it fits maxBytes — phone-camera photos routinely come in at
- * 5-10MB, and rejecting those outright just pushes the resizing work onto
- * whoever is doing the home visit. Returns the original file untouched if
- * it already fits or if it isn't a decodable image (the caller's normal
- * validation will reject those).
+ * Re-encodes an oversized photo as a high-quality JPEG so it fits maxBytes —
+ * phone-camera photos routinely come in at 5-10MB. Quality is kept high
+ * (never below 75%); if the photo still doesn't fit, it's made smaller in
+ * pixels instead, which looks much sharper than heavy JPEG compression.
+ * Returns the original file untouched if it already fits or if it isn't a
+ * decodable image (the caller's normal validation will reject those).
  */
-export async function compressImageFile(file: File, maxBytes: number = MAX_IMAGE_BYTES): Promise<File> {
+export async function compressImageFile(
+  file: File,
+  maxBytes: number = MAX_STUDENT_PHOTO_BYTES,
+  maxDimension = 2048,
+): Promise<File> {
   if (file.size <= maxBytes) return file;
 
   let bitmap: ImageBitmap;
@@ -53,21 +59,27 @@ export async function compressImageFile(file: File, maxBytes: number = MAX_IMAGE
     return file;
   }
 
-  const maxDimension = 1600;
-  const scale = Math.min(1, maxDimension / Math.max(bitmap.width, bitmap.height));
-  const canvas = document.createElement("canvas");
-  canvas.width = Math.round(bitmap.width * scale);
-  canvas.height = Math.round(bitmap.height * scale);
-  const ctx = canvas.getContext("2d");
-  if (!ctx) return file;
-  ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-  bitmap.close();
-
   let blob: Blob | null = null;
-  for (let quality = 0.85; quality >= 0.4; quality -= 0.15) {
-    blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", quality));
-    if (blob && blob.size <= maxBytes) break;
+  for (let dimension = maxDimension; dimension >= 800 && !blob; dimension = Math.round(dimension * 0.8)) {
+    const scale = Math.min(1, dimension / Math.max(bitmap.width, bitmap.height));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.round(bitmap.width * scale);
+    canvas.height = Math.round(bitmap.height * scale);
+    const ctx = canvas.getContext("2d");
+    if (!ctx) break;
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "high";
+    ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+
+    for (const quality of [0.92, 0.85, 0.8, 0.75]) {
+      const candidate = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", quality));
+      if (candidate && candidate.size <= maxBytes) {
+        blob = candidate;
+        break;
+      }
+    }
   }
+  bitmap.close();
   if (!blob) return file;
 
   const newName = file.name.replace(/\.[^.]+$/, "") + ".jpg";
@@ -86,6 +98,7 @@ export async function uploadPartnerLogo(file: File, kind: "ngos" | "schools"): P
  * The folder comes from the verified token server-side; the uid argument is kept for call-site compatibility. */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 export async function uploadAvatar(file: File, _firebaseUid: string): Promise<string> {
+  file = await compressImageFile(file, MAX_IMAGE_BYTES, 1024);
   const invalidReason = validateAvatarFile(file);
   if (invalidReason) throw new Error(invalidReason);
   const { url } = await api.upload<{ url: string }>("/api/v1/uploads/avatar", file);

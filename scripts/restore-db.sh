@@ -27,7 +27,7 @@ docker compose exec -T postgres pg_restore -U "${POSTGRES_USER:-postgres}" -d "$
   --clean --if-exists --no-owner --exit-on-error < "$FILE"
 
 echo "==> Re-applying migrations / role grants"
-docker compose run --rm --no-build migrate
+docker compose run --rm migrate
 
 docker compose start api
 echo "Restore complete."

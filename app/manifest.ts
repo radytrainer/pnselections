@@ -3,8 +3,8 @@ import type { MetadataRoute } from "next";
 export default function manifest(): MetadataRoute.Manifest {
   return {
     name: "Scholarship Selection Tracker",
-    short_name: "Sel. Tracker",
-    description: "NGO Education Partnership — Cambodia scholarship selection tracker",
+    short_name: "PN Selection",
+    description: "Passerelles Numériques Cambodia — scholarship selection tracker",
     start_url: "/",
     scope: "/",
     display: "standalone",

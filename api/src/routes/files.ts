@@ -1,11 +1,12 @@
 import { randomUUID } from "node:crypto";
 import { Router, type Request, type Response } from "express";
 import multer from "multer";
+import sharp from "sharp";
 import { asUser, requireAuth } from "../auth";
 import { withClaims } from "../db";
 import { badRequest, forbidden, notFound } from "../errors";
 import { insertRow } from "../sql";
-import { storage } from "../storage";
+import { storage, type StoredObject } from "../storage";
 import { uuidParam } from "./util";
 
 /**
@@ -105,7 +106,7 @@ uploadsRouter.post("/student-photo/:studentId", imageUpload(MAX_DOCUMENT_BYTES),
 // ---------------------------------------------------------------------------
 // Downloads
 // ---------------------------------------------------------------------------
-async function sendObject(res: Response, key: string, cacheControl: string) {
+async function getObject(key: string): Promise<StoredObject> {
   let object;
   try {
     object = await storage.get(key);
@@ -113,14 +114,85 @@ async function sendObject(res: Response, key: string, cacheControl: string) {
     throw notFound("File");
   }
   if (!object) throw notFound("File");
+  return object;
+}
 
+async function sendObject(res: Response, key: string, cacheControl: string) {
+  sendStored(res, await getObject(key), cacheControl);
+}
+
+/** Streams an already-opened object (the caller hands over its open stream). */
+function sendStored(res: Response, object: StoredObject, cacheControl: string) {
   res.setHeader("Content-Type", object.contentType);
   if (object.size !== undefined) res.setHeader("Content-Length", String(object.size));
   res.setHeader("Cache-Control", cacheControl);
   res.setHeader("X-Content-Type-Options", "nosniff");
   // Uploaded SVGs are served same-origin: never let one run script if opened directly.
   res.setHeader("Content-Security-Policy", "default-src 'none'; img-src data:; style-src 'unsafe-inline'; sandbox");
+  object.body.on("error", () => res.destroy());
+  res.on("close", () => object.body.destroy());
   object.body.pipe(res);
+}
+
+// ---------------------------------------------------------------------------
+// Thumbnails (?w=96): photos are shown in lists at ~28-48px. Letting the
+// browser shrink a 1000px+ photo ~30x in one step looks soft and blurry, so
+// the server downsizes with a high-quality filter instead. Each size is made
+// once and stored next to the originals (originals are never overwritten, so
+// a stored thumbnail never goes stale).
+// ---------------------------------------------------------------------------
+sharp.concurrency(1); // small server: keep memory use low
+sharp.cache(false);
+
+const THUMB_WIDTHS = new Set([48, 64, 96, 128, 192, 256, 384, 512, 768]);
+const THUMBNAILABLE = new Set(["image/png", "image/jpeg", "image/webp"]);
+
+function thumbWidth(req: Request): number | null {
+  const w = Number(req.query.w);
+  return THUMB_WIDTHS.has(w) ? w : null;
+}
+
+async function readAll(object: StoredObject) {
+  const chunks: Buffer[] = [];
+  for await (const chunk of object.body) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  return Buffer.concat(chunks);
+}
+
+/** Sends a square thumbnail, or the original when it isn't a resizable image. */
+async function sendThumbnail(res: Response, key: string, width: number, cacheControl: string) {
+  const thumbKey = `_thumbs/${width}/${key}.webp`;
+  // Already made: stream the stored thumbnail (opened once, handed straight on).
+  const stored = await storage.get(thumbKey).catch(() => null);
+  if (stored) return sendStored(res, stored, cacheControl);
+
+  const original = await getObject(key);
+  if (!THUMBNAILABLE.has(original.contentType)) return sendStored(res, original, cacheControl);
+
+  const source = await readAll(original);
+  let data: Buffer;
+  try {
+    data = await sharp(source)
+      .rotate() // respect camera orientation
+      .resize(width, width, { fit: "cover", kernel: "lanczos3", withoutEnlargement: true })
+      .webp({ quality: 85 })
+      .toBuffer();
+  } catch {
+    // Unreadable image: serve the original rather than failing.
+    return sendObject(res, key, cacheControl);
+  }
+  // Two requests can race to create it; the loser's write fails harmlessly.
+  await storage.put(thumbKey, data, "image/webp").catch(() => {});
+
+  res.setHeader("Content-Type", "image/webp");
+  res.setHeader("Content-Length", String(data.length));
+  res.setHeader("Cache-Control", cacheControl);
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.end(data);
+}
+
+function sendFile(req: Request, res: Response, key: string, cacheControl: string) {
+  const width = thumbWidth(req);
+  return width ? sendThumbnail(res, key, width, cacheControl) : sendObject(res, key, cacheControl);
 }
 
 function keyFromParams(req: Request) {
@@ -135,7 +207,7 @@ filesRouter.get("/partner-logos/*path", async (req, res) => {
 });
 
 filesRouter.get("/avatars/*path", async (req, res) => {
-  await sendObject(res, `avatars/${keyFromParams(req)}`, "public, max-age=31536000, immutable");
+  await sendFile(req, res, `avatars/${keyFromParams(req)}`, "public, max-age=31536000, immutable");
 });
 
 /** Private: only callers who can see the matching student_documents row (RLS) get the file. */
@@ -145,5 +217,5 @@ filesRouter.get("/student-documents/*path", requireAuth, async (req, res) => {
     db.value<boolean>("select exists (select 1 from student_documents where file_path = $1)", [path]),
   );
   if (!visible) throw notFound("File");
-  await sendObject(res, `student-documents/${path}`, "private, max-age=86400");
+  await sendFile(req, res, `student-documents/${path}`, "private, max-age=86400");
 });

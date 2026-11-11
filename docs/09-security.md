@@ -50,7 +50,7 @@ sequenceDiagram
 | Create/edit cycles | ✅ | ✅ | – | – | – | – | – | – |
 | Create/edit students | ✅ | ✅ | ✅ | – | – | – | – | – |
 | Enter exam scores | ✅ | ✅ | ✅ | – | – | – | – | – |
-| Enter interview scores | ✅ | ✅ | – | ✅ | – | – | – | – |
+| Enter interview scores | ✅ | ✅ | ✅ | ✅ | – | – | – | – |
 | Enter home visit data | ✅ | ✅ | – | – | ✅ | – | – | – |
 | Record committee decision | ✅ | ✅ | – | – | – | ✅ | – | – |
 | Approve committee decision | ✅ | ✅ | – | – | – | – | – | – |
