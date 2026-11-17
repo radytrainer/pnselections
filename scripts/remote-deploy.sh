@@ -10,6 +10,10 @@
 #             Omit to serve plain HTTP on the server's IP address.
 #   --data    Database dump (from ./scripts/backup-db.sh) to restore on the server.
 #             You will be asked to type "restore" on the server to confirm.
+#   --dir     Folder on the server (in the SSH user's home). Default: selection-tracker
+#   --git     The server folder is a git clone: `git pull` there instead of uploading
+#             this computer's files (keeps the clone clean for later pulls).
+#             Push your commits to GitHub first — only pushed code is deployed.
 #   --ship-images  Build the Docker images on THIS computer and upload them, instead
 #             of building on the server. Use for small servers (< 2 GB RAM).
 #             Needs Docker running locally and the same CPU type (x86_64).
@@ -24,21 +28,26 @@ TARGET=""
 KEY=""
 DOMAIN=""
 DATA=""
+REMOTE_DIR="selection-tracker"
+USE_GIT=false
 SHIP=false
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --key) KEY="$2"; shift 2 ;;
     --domain) DOMAIN="$2"; shift 2 ;;
     --data) DATA="$2"; shift 2 ;;
+    --dir) REMOTE_DIR="$2"; shift 2 ;;
+    --git) USE_GIT=true; shift ;;
     --ship-images) SHIP=true; shift ;;
-    -h|--help) sed -n '2,19p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,23p' "$0"; exit 0 ;;
     *) if [[ -z "$TARGET" ]]; then TARGET="$1"; shift; else echo "Unknown argument: $1" >&2; exit 1; fi ;;
   esac
 done
-[[ -n "$TARGET" ]] || { sed -n '2,19p' "$0"; exit 1; }
+[[ -n "$TARGET" ]] || { sed -n '2,23p' "$0"; exit 1; }
 [[ -z "$DATA" || -f "$DATA" ]] || { echo "Dump file not found: $DATA" >&2; exit 1; }
+# Plain folder name only — it's spliced into remote shell commands.
+[[ "$REMOTE_DIR" =~ ^[A-Za-z0-9._-]+$ ]] || { echo "--dir must be a plain folder name (letters, digits, . _ -)" >&2; exit 1; }
 
-REMOTE_DIR="selection-tracker"
 HOST="${TARGET#*@}"
 SSH_OPTS=(-o StrictHostKeyChecking=accept-new -o ServerAliveInterval=30)
 [[ -n "$KEY" ]] && SSH_OPTS+=(-i "$KEY")
@@ -56,9 +65,18 @@ done
 echo "==> Connecting to ${TARGET}"
 run 'echo "    connected to $(hostname) ($(. /etc/os-release && echo $PRETTY_NAME), $(nproc) CPU, $(free -g | awk "/Mem:/{print \$2}") GB RAM)"'
 
-echo "==> Packaging the app"
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
+
+if $USE_GIT; then
+  echo "==> Updating the git clone on the server (${REMOTE_DIR})"
+  run "test -d ${REMOTE_DIR}/.git" || { echo "    ${REMOTE_DIR} on the server is not a git clone (drop --git to upload files instead)" >&2; exit 1; }
+  if [[ -n "$(git status --porcelain 2>/dev/null)" ]] || [[ -n "$(git log '@{u}..' --oneline 2>/dev/null)" ]]; then
+    echo "    note: this computer has uncommitted or unpushed changes — they will NOT be deployed"
+  fi
+  run "cd ${REMOTE_DIR} && git pull --ff-only && chmod +x scripts/*.sh && echo \"    now at \$(git log -1 --format='%h %s')\""
+else
+echo "==> Packaging the app"
 tar -czf "$WORK/app.tar.gz" \
   --exclude=./node_modules --exclude=./api/node_modules --exclude=./api/dist \
   --exclude=./.next --exclude=./.git --exclude=./.env --exclude=./.env.local --exclude=./api/.env \
@@ -71,6 +89,7 @@ echo "==> Uploading"
 copy "$WORK/app.tar.gz" "app.tar.gz"
 run "mkdir -p ${REMOTE_DIR} && tar -xzf app.tar.gz -C ${REMOTE_DIR} && rm app.tar.gz \
   && cd ${REMOTE_DIR} && sed -i 's/\r\$//' scripts/*.sh deploy/Caddyfile && chmod +x scripts/*.sh"
+fi
 
 if ! run "command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1"; then
   echo "==> Installing Docker on the server (one time)"
