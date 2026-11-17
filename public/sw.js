@@ -3,14 +3,29 @@ const OFFLINE_URL = "/offline";
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) =>
-      cache.addAll([
+    caches.open(CACHE_NAME).then(async (cache) => {
+      await cache.addAll([
         OFFLINE_URL,
         "/icons/icon-192.png",
         "/icons/icon-512.png",
         "/favicon.ico",
-      ]),
-    ),
+        // Logos shown on the offline page and app header.
+        "/brand/pn-logo.png",
+        "/brand/pn-logo-white.png",
+        "/brand/pn-mark.png",
+      ]);
+      // Also keep the offline page's own scripts/styles, so its buttons (Go
+      // back, Try again, auto-reload when back online) work on a device that
+      // never opened it while online. Best effort — the page's plain links
+      // work without them.
+      try {
+        const html = await (await cache.match(OFFLINE_URL)).text();
+        const assets = [...new Set(html.match(/\/_next\/static\/[^"'\s)]+\.(?:js|css|woff2)/g) || [])];
+        await Promise.all(assets.map((a) => cache.add(a).catch(() => {})));
+      } catch {
+        // ignore
+      }
+    }),
   );
   self.skipWaiting();
 });

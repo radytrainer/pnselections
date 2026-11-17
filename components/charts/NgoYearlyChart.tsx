@@ -19,6 +19,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import type { NgoYearlyStat } from "@/services/ngoService";
+import { ChartEmpty, ChartTooltip, VIZ, axisProps, cursorProps, gridProps } from "@/components/charts/theme";
 
 export function NgoYearlyChart({ stats }: { stats: NgoYearlyStat[] }) {
   const [yearFilter, setYearFilter] = useState<string>("");
@@ -69,9 +70,9 @@ export function NgoYearlyChart({ stats }: { stats: NgoYearlyStat[] }) {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap gap-3">
+      <div className="flex flex-wrap gap-2">
         <Select value={yearFilter} onValueChange={(value) => setYearFilter(value ?? "")}>
-          <SelectTrigger className="w-40">
+          <SelectTrigger size="sm" className="w-32">
             <SelectValue placeholder="All Years">{(value: string) => value || "All Years"}</SelectValue>
           </SelectTrigger>
           <SelectContent>
@@ -84,7 +85,7 @@ export function NgoYearlyChart({ stats }: { stats: NgoYearlyStat[] }) {
           </SelectContent>
         </Select>
         <Select value={ngoFilter} onValueChange={(value) => setNgoFilter(value ?? "")}>
-          <SelectTrigger className="w-56">
+          <SelectTrigger size="sm" className="w-48">
             <SelectValue placeholder="All NGOs">
               {(value: string) => (value ? ngoOptions.find((n) => n.id === value)?.name : "All NGOs")}
             </SelectValue>
@@ -101,18 +102,25 @@ export function NgoYearlyChart({ stats }: { stats: NgoYearlyStat[] }) {
       </div>
 
       {chartData.length === 0 ? (
-        <p className="py-12 text-center text-sm text-muted-foreground">No referral data yet.</p>
+        <ChartEmpty>No referral data yet.</ChartEmpty>
       ) : (
         <div className="h-80 w-full">
           <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={chartData}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="label" tick={{ fontSize: 12 }} />
-              <YAxis allowDecimals={false} tick={{ fontSize: 12 }} />
-              <Tooltip />
-              <Legend />
-              <Bar dataKey="referred" name="Referred" fill="#2563eb" radius={[4, 4, 0, 0]} />
-              <Bar dataKey="selected" name="Selected" fill="#16a34a" radius={[4, 4, 0, 0]} />
+            <BarChart data={chartData} margin={{ top: 4, right: 4, left: -16, bottom: 0 }} barGap={2} barCategoryGap="28%">
+              <CartesianGrid {...gridProps} />
+              <XAxis dataKey="label" {...axisProps} interval={0} />
+              <YAxis allowDecimals={false} {...axisProps} />
+              <Tooltip cursor={cursorProps} content={<ChartTooltip />} />
+              <Legend
+                verticalAlign="top"
+                align="right"
+                iconType="circle"
+                iconSize={8}
+                height={28}
+                wrapperStyle={{ fontSize: 12, color: "var(--muted-foreground)" }}
+              />
+              <Bar dataKey="referred" name="Referred" fill={VIZ.series1} radius={[4, 4, 0, 0]} maxBarSize={28} />
+              <Bar dataKey="selected" name="Selected" fill={VIZ.series2} radius={[4, 4, 0, 0]} maxBarSize={28} />
             </BarChart>
           </ResponsiveContainer>
         </div>
