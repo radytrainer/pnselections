@@ -628,6 +628,11 @@ export type Database = {
           cycle_id: string;
           visit_number: number;
           age: number | null;
+          child_rank: number | null;
+          children_count: number | null;
+          family_male_count: number | null;
+          family_female_count: number | null;
+          family_note: string | null;
           health_status: "healthy" | "simple_disease" | "chronic_disease" | null;
           ok_to_join_training: string | null;
           academic_rank: "outstanding_ab" | "good_cd" | "average_e" | null;
@@ -743,6 +748,11 @@ export type Database = {
           cycle_id: string;
           visit_number?: number;
           age?: number | null;
+          child_rank?: number | null;
+          children_count?: number | null;
+          family_male_count?: number | null;
+          family_female_count?: number | null;
+          family_note?: string | null;
           health_status?: "healthy" | "simple_disease" | "chronic_disease" | null;
           ok_to_join_training?: string | null;
           academic_rank?: "outstanding_ab" | "good_cd" | "average_e" | null;

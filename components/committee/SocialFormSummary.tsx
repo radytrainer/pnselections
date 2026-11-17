@@ -63,6 +63,18 @@ function buildSections(a: SocialAssessmentRow) {
   return [
     section("Health & Academic", HeartPulse, [
       { label: "Age", value: a.age?.toString() ?? "" },
+      { label: "Child Rank in Family", value: a.child_rank?.toString() ?? "" },
+      { label: "Children in Family", value: a.children_count?.toString() ?? "" },
+      {
+        label: "Family Members",
+        value: [
+          a.family_male_count != null ? `${a.family_male_count} male` : "",
+          a.family_female_count != null ? `${a.family_female_count} female` : "",
+        ]
+          .filter(Boolean)
+          .join(" · "),
+      },
+      { label: "Family Notes", value: a.family_note ?? "" },
       { label: "Health", value: labelFor(HEALTH_OPTS, a.health_status) ?? "" },
       { label: "Academic Performance", value: labelFor(ACADEMIC_OPTS, a.academic_rank) ?? "" },
       { label: "Academic Notes", value: a.academic_note ?? "" },

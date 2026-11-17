@@ -104,6 +104,11 @@ function SectionHeading({ icon: Icon, title, hint }: { icon: LucideIcon; title: 
 
 const DEFAULT_VALUES: SocialFormValues = {
   age: "",
+  child_rank: "",
+  children_count: "",
+  family_male_count: "",
+  family_female_count: "",
+  family_note: "",
   ok_to_join_training: "",
   academic_note: "",
   household_size_note: "",
@@ -244,6 +249,18 @@ export function SocialForm({
       rows: [
         { label: "Gender", value: values.gender ? values.gender === "lgbtqia+" ? "LGBTQIA+" : values.gender.charAt(0).toUpperCase() + values.gender.slice(1) : "" },
         { label: "Age", value: values.age ?? "" },
+        { label: "Child Rank in Family", value: values.child_rank ?? "" },
+        { label: "Children in Family", value: values.children_count ?? "" },
+        {
+          label: "Family Members",
+          value: [
+            values.family_male_count ? `${values.family_male_count} male` : "",
+            values.family_female_count ? `${values.family_female_count} female` : "",
+          ]
+            .filter(Boolean)
+            .join(" · "),
+        },
+        { label: "Family Notes", value: values.family_note ?? "" },
         { label: "Health", value: labelFor(HEALTH_OPTS, values.health_status) ?? "" },
         { label: "Academic Performance", value: labelFor(ACADEMIC_OPTS, values.academic_rank) ?? "" },
         { label: "Academic Notes", value: values.academic_note ?? "" },
@@ -437,6 +454,54 @@ export function SocialForm({
                 </FormItem>
               )}
             />
+            <div>
+              <SectionHeading icon={Users} title="Family" />
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                {(
+                  [
+                    { name: "child_rank", label: "Child rank in family", placeholder: "e.g. 2", min: 1 },
+                    { name: "children_count", label: "Number of children", placeholder: "e.g. 4", min: 0 },
+                    { name: "family_male_count", label: "Males in family", placeholder: "0", min: 0 },
+                    { name: "family_female_count", label: "Females in family", placeholder: "0", min: 0 },
+                  ] as const
+                ).map((f) => (
+                  <FormField
+                    key={f.name}
+                    control={form.control}
+                    name={f.name}
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-xs text-muted-foreground">{f.label}</FormLabel>
+                        <FormControl>
+                          <Input type="number" inputMode="numeric" min={f.min} placeholder={f.placeholder} {...field} />
+                        </FormControl>
+                      </FormItem>
+                    )}
+                  />
+                ))}
+              </div>
+              {(() => {
+                const rank = Number(form.watch("child_rank"));
+                const count = Number(form.watch("children_count"));
+                return rank > 0 && count > 0 && rank > count ? (
+                  <p className="mt-1.5 text-xs text-amber-600">
+                    Child rank ({rank}) is higher than the number of children ({count}).
+                  </p>
+                ) : null;
+              })()}
+              <FormField
+                control={form.control}
+                name="family_note"
+                render={({ field }) => (
+                  <FormItem className="mt-3">
+                    <FormLabel className="text-xs text-muted-foreground">Comment</FormLabel>
+                    <FormControl>
+                      <Textarea rows={3} placeholder="Other notes about the family..." {...field} />
+                    </FormControl>
+                  </FormItem>
+                )}
+              />
+            </div>
             <div>
               <SectionHeading icon={HeartPulse} title="Health" />
               <ChoiceGroup

@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   flexRender,
   getCoreRowModel,
@@ -8,9 +9,9 @@ import {
   type ColumnDef,
   type RowSelectionState,
 } from "@tanstack/react-table";
-import { Trash2 } from "lucide-react";
+import { ChevronLeft, ChevronRight, SearchX, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
-import { getStudentColumns } from "@/components/tables/columns/students";
+import { getStudentColumns, type StudentColumnMeta } from "@/components/tables/columns/students";
 import {
   Table,
   TableBody,
@@ -21,31 +22,44 @@ import {
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Skeleton } from "@/components/ui/skeleton";
 import { can } from "@/lib/rbac";
+import { cn } from "@/lib/utils";
 import { bulkSoftDeleteStudents, type StudentListItem } from "@/services/studentService";
 import type { AppRole } from "@/lib/constants";
 
+const metaClass = (meta: unknown) => (meta as StudentColumnMeta | undefined)?.className;
+
+/** Clicks on these inside a row keep their own behavior instead of opening the profile. */
+const INTERACTIVE = "a, button, input, label, [role='checkbox'], [role='menuitem'], [data-slot='tooltip-trigger']";
+
 export function StudentsTable({
   data,
+  loading = false,
   page,
   pageSize,
   total,
   onPageChange,
   onChanged,
+  onClearFilters,
   role,
   currentUserId,
   photoUrls,
 }: {
   data: StudentListItem[];
+  loading?: boolean;
   page: number;
   pageSize: number;
   total: number;
   onPageChange: (page: number) => void;
   onChanged: () => void;
+  /** Shown in the empty state when filters are active. */
+  onClearFilters?: () => void;
   role: AppRole | null;
   currentUserId: string | null;
   photoUrls?: Record<string, string>;
 }) {
+  const router = useRouter();
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
   const [deleting, setDeleting] = useState(false);
 
@@ -54,6 +68,7 @@ export function StudentsTable({
   const selectColumn: ColumnDef<StudentListItem> = useMemo(
     () => ({
       id: "select",
+      meta: { className: "w-10" } satisfies StudentColumnMeta,
       header: ({ table }) => (
         <Checkbox
           checked={table.getIsAllPageRowsSelected()}
@@ -82,17 +97,18 @@ export function StudentsTable({
   const table = useReactTable({
     data,
     columns,
+    getRowId: (row) => row.id,
     getCoreRowModel: getCoreRowModel(),
     enableRowSelection: canBulkDelete,
     state: { rowSelection },
     onRowSelectionChange: setRowSelection,
   });
 
-  const selectedIds = table
-    .getSelectedRowModel()
-    .rows.map((r) => r.original.id);
+  const selectedIds = table.getSelectedRowModel().rows.map((r) => r.original.id);
 
   const pageCount = Math.max(1, Math.ceil(total / pageSize));
+  const from = total === 0 ? 0 : (page - 1) * pageSize + 1;
+  const to = Math.min(page * pageSize, total);
 
   async function handleBulkDelete() {
     if (selectedIds.length === 0) return;
@@ -116,82 +132,149 @@ export function StudentsTable({
     }
   }
 
+  const headers = table.getHeaderGroups()[0]?.headers ?? [];
+
   return (
-    <div className="space-y-3">
+    <div className="overflow-hidden rounded-xl border bg-card shadow-xs">
       {canBulkDelete && selectedIds.length > 0 && (
-        <div className="flex items-center justify-between rounded-md border border-destructive/30 bg-destructive/5 px-4 py-2">
-          <span className="text-sm font-medium text-destructive">
-            {selectedIds.length} student{selectedIds.length === 1 ? "" : "s"} selected
-          </span>
-          <Button
-            variant="destructive"
-            size="sm"
-            disabled={deleting}
-            onClick={handleBulkDelete}
-          >
-            <Trash2 className="size-4" />
+        <div className="flex items-center justify-between gap-3 border-b bg-primary/5 px-4 py-2">
+          <div className="flex items-center gap-2 text-sm font-medium">
+            <Button
+              variant="ghost"
+              size="icon-xs"
+              onClick={() => setRowSelection({})}
+              aria-label="Clear selection"
+            >
+              <X />
+            </Button>
+            {selectedIds.length} selected
+          </div>
+          <Button variant="destructive" size="sm" disabled={deleting} onClick={handleBulkDelete}>
+            <Trash2 />
             {deleting ? "Deleting..." : `Delete ${selectedIds.length}`}
           </Button>
         </div>
       )}
 
-      <div className="rounded-md border">
-        <Table>
-          <TableHeader>
-            {table.getHeaderGroups().map((headerGroup) => (
-              <TableRow key={headerGroup.id}>
-                {headerGroup.headers.map((header) => (
-                  <TableHead key={header.id}>
-                    {header.isPlaceholder
-                      ? null
-                      : flexRender(header.column.columnDef.header, header.getContext())}
-                  </TableHead>
+      <Table>
+        <TableHeader className="bg-muted/40">
+          {table.getHeaderGroups().map((headerGroup) => (
+            <TableRow key={headerGroup.id} className="hover:bg-transparent">
+              {headerGroup.headers.map((header) => (
+                <TableHead
+                  key={header.id}
+                  className={cn(
+                    "h-10 text-xs font-medium tracking-wide text-muted-foreground uppercase first:pl-4 last:pr-4",
+                    metaClass(header.column.columnDef.meta),
+                  )}
+                >
+                  {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
+                </TableHead>
+              ))}
+            </TableRow>
+          ))}
+        </TableHeader>
+        <TableBody>
+          {loading ? (
+            Array.from({ length: 8 }).map((_, i) => (
+              <TableRow key={`sk-${i}`} className="hover:bg-transparent">
+                {headers.map((h) => (
+                  <TableCell
+                    key={h.id}
+                    className={cn("py-3 first:pl-4 last:pr-4", metaClass(h.column.columnDef.meta))}
+                  >
+                    {h.column.id === "name" ? (
+                      <div className="flex items-center gap-3">
+                        <Skeleton className="size-9 rounded-full" />
+                        <div className="space-y-1.5">
+                          <Skeleton className="h-3.5 w-32" />
+                          <Skeleton className="h-3 w-16" />
+                        </div>
+                      </div>
+                    ) : h.column.id === "select" ? (
+                      <Skeleton className="size-4" />
+                    ) : (
+                      <Skeleton className="h-3.5 w-16" />
+                    )}
+                  </TableCell>
                 ))}
               </TableRow>
-            ))}
-          </TableHeader>
-          <TableBody>
-            {table.getRowModel().rows.length ? (
-              table.getRowModel().rows.map((row) => (
-                <TableRow key={row.id} data-state={row.getIsSelected() && "selected"}>
-                  {row.getVisibleCells().map((cell) => (
-                    <TableCell key={cell.id}>
-                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                    </TableCell>
-                  ))}
-                </TableRow>
-              ))
-            ) : (
-              <TableRow>
-                <TableCell colSpan={columns.length} className="h-24 text-center text-muted-foreground">
-                  No students found.
-                </TableCell>
+            ))
+          ) : table.getRowModel().rows.length ? (
+            table.getRowModel().rows.map((row) => (
+              <TableRow
+                key={row.id}
+                data-state={row.getIsSelected() && "selected"}
+                className="cursor-pointer"
+                onClick={(e) => {
+                  if ((e.target as HTMLElement).closest(INTERACTIVE)) return;
+                  if (window.getSelection()?.toString()) return; // let people copy text
+                  router.push(`/students/${row.original.id}`);
+                }}
+              >
+                {row.getVisibleCells().map((cell) => (
+                  <TableCell
+                    key={cell.id}
+                    className={cn("py-2.5 first:pl-4 last:pr-4", metaClass(cell.column.columnDef.meta))}
+                  >
+                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                  </TableCell>
+                ))}
               </TableRow>
-            )}
-          </TableBody>
-        </Table>
-      </div>
+            ))
+          ) : (
+            <TableRow className="hover:bg-transparent">
+              <TableCell colSpan={columns.length} className="py-16">
+                <div className="flex flex-col items-center gap-2 text-center">
+                  <div className="flex size-10 items-center justify-center rounded-full bg-muted">
+                    <SearchX className="size-5 text-muted-foreground" />
+                  </div>
+                  <p className="font-medium">No students found</p>
+                  <p className="text-sm text-muted-foreground">Try a different name or code, or loosen the filters.</p>
+                  {onClearFilters && (
+                    <Button variant="outline" size="sm" className="mt-1" onClick={onClearFilters}>
+                      Clear filters
+                    </Button>
+                  )}
+                </div>
+              </TableCell>
+            </TableRow>
+          )}
+        </TableBody>
+      </Table>
 
-      <div className="flex items-center justify-between text-sm text-muted-foreground">
+      <div className="flex flex-col gap-2 border-t px-4 py-3 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
         <span>
-          Page {page} of {pageCount} ({total} students)
+          {total === 0 ? (
+            "No results"
+          ) : (
+            <>
+              Showing <span className="font-medium text-foreground">{from}–{to}</span> of{" "}
+              <span className="font-medium text-foreground">{total}</span>
+            </>
+          )}
         </span>
-        <div className="flex gap-2">
+        <div className="flex items-center gap-2">
+          <span className="mr-1 tabular-nums">
+            Page {page} of {pageCount}
+          </span>
           <Button
             variant="outline"
-            size="sm"
-            disabled={page <= 1}
+            size="icon-sm"
+            disabled={page <= 1 || loading}
             onClick={() => onPageChange(page - 1)}
+            aria-label="Previous page"
           >
-            Previous
+            <ChevronLeft />
           </Button>
           <Button
             variant="outline"
-            size="sm"
-            disabled={page >= pageCount}
+            size="icon-sm"
+            disabled={page >= pageCount || loading}
             onClick={() => onPageChange(page + 1)}
+            aria-label="Next page"
           >
-            Next
+            <ChevronRight />
           </Button>
         </div>
       </div>

@@ -6,6 +6,11 @@ import { z } from "zod";
 export const socialFormSchema = z.object({
   gender: z.enum(["male", "female", "lgbtqia+"]).optional(),
   age: z.string().optional().or(z.literal("")),
+  child_rank: z.string().optional().or(z.literal("")),
+  children_count: z.string().optional().or(z.literal("")),
+  family_male_count: z.string().optional().or(z.literal("")),
+  family_female_count: z.string().optional().or(z.literal("")),
+  family_note: z.string().optional().or(z.literal("")),
   health_status: z.enum(["healthy", "simple_disease", "chronic_disease"]).optional(),
   ok_to_join_training: z.string().optional().or(z.literal("")),
   academic_rank: z.enum(["outstanding_ab", "good_cd", "average_e"]).optional(),

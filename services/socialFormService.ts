@@ -24,6 +24,11 @@ type SaveInput = SocialFormScoreInput & {
   currentStatus: StudentStatus;
   gender?: "male" | "female" | "lgbtqia+" | null;
   age?: number | null;
+  child_rank?: number | null;
+  children_count?: number | null;
+  family_male_count?: number | null;
+  family_female_count?: number | null;
+  family_note?: string | null;
   major?: "science" | "social_science" | null;
   ok_to_join_training: string | null;
   academic_note: string | null;
@@ -71,6 +76,11 @@ export async function saveSocialAssessment(input: SaveInput) {
     cycle_id: input.cycleId,
     visit_number: input.visitNumber,
     age: input.age,
+    child_rank: input.child_rank ?? null,
+    children_count: input.children_count ?? null,
+    family_male_count: input.family_male_count ?? null,
+    family_female_count: input.family_female_count ?? null,
+    family_note: input.family_note ?? null,
     health_status: input.health_status,
     ok_to_join_training: input.ok_to_join_training,
     academic_rank: input.academic_rank,

@@ -3,17 +3,17 @@
 import Link from "next/link";
 import { toast } from "sonner";
 import type { ColumnDef } from "@tanstack/react-table";
-import { Gavel, HeartHandshake, MoreHorizontal, Pencil, Send, Trash2 } from "lucide-react";
+import { Eye, Gavel, HeartHandshake, MoreHorizontal, Pencil, Send, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { RoleGate } from "@/components/layout/RoleGate";
 import { StudentAvatar } from "@/components/students/StudentAvatar";
 import { can } from "@/lib/rbac";
 import {
@@ -30,58 +30,46 @@ import { sendToCommittee } from "@/services/committeeService";
 /** Committee isn't relevant until the home visit (social form) is done — these statuses come before it. */
 const PRE_HOME_VISIT_STATUSES = new Set(["registered", "exam_completed", "interview_completed"]);
 
+/** Per-column cell/header classes (read by StudentsTable) — used to hide secondary columns on narrow screens. */
+export type StudentColumnMeta = { className?: string };
+
+const GENDER_LABEL: Record<string, string> = { male: "Male", female: "Female", "lgbtqia+": "LGBTQIA+" };
+
+const Empty = () => <span className="text-muted-foreground/60">—</span>;
+
 export function getStudentColumns(
   onChanged: () => void,
   role: AppRole | null,
   currentUserId: string | null,
   photoUrls: Record<string, string> = {},
 ): ColumnDef<StudentListItem>[] {
+  const canEdit = can(role, "createEditStudents");
+
   return [
     {
       id: "name",
-      header: "Name",
+      header: "Student",
       cell: ({ row }) => {
-        const photoPath = pickLatestPhotoPath(row.original.student_documents);
-        const initials = `${row.original.first_name[0] ?? ""}${row.original.last_name[0] ?? ""}`.toUpperCase();
+        const s = row.original;
+        const photoPath = pickLatestPhotoPath(s.student_documents);
+        const initials = `${s.first_name[0] ?? ""}${s.last_name[0] ?? ""}`.toUpperCase();
         return (
-          <div className="flex items-center gap-2">
+          <div className="flex min-w-48 items-center gap-3">
             <StudentAvatar
               photoPath={photoPath}
               signedUrl={photoPath ? photoUrls[photoPath] ?? null : null}
               initials={initials}
               size="size-9"
             />
-            <Link href={`/students/${row.original.id}`} className="font-medium hover:underline">
-              {row.original.first_name} {row.original.last_name}
-            </Link>
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <Link
-                    href={`/students/${row.original.id}/social-form`}
-                    className="inline-flex size-5 shrink-0 items-center justify-center rounded-full border border-pink-200 bg-pink-50 text-pink-600 transition-colors hover:bg-pink-100"
-                  />
-                }
+            <div className="min-w-0 leading-tight">
+              <Link
+                href={`/students/${s.id}`}
+                className="block truncate font-medium text-foreground hover:text-primary hover:underline"
               >
-                <HeartHandshake className="size-3" />
-              </TooltipTrigger>
-              <TooltipContent>Social Form</TooltipContent>
-            </Tooltip>
-            {!PRE_HOME_VISIT_STATUSES.has(row.original.status) && (
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <Link
-                      href={`/committee/${row.original.id}`}
-                      className="inline-flex size-5 shrink-0 items-center justify-center rounded-full border border-indigo-200 bg-indigo-50 text-indigo-600 transition-colors hover:bg-indigo-100"
-                    />
-                  }
-                >
-                  <Gavel className="size-3" />
-                </TooltipTrigger>
-                <TooltipContent>Committee</TooltipContent>
-              </Tooltip>
-            )}
+                {s.first_name} {s.last_name}
+              </Link>
+              <span className="font-mono text-xs text-muted-foreground">{s.student_code}</span>
+            </div>
           </div>
         );
       },
@@ -89,26 +77,36 @@ export function getStudentColumns(
     {
       accessorKey: "gender",
       header: "Gender",
-      cell: ({ row }) => <span className="capitalize">{row.original.gender}</span>,
+      meta: { className: "hidden sm:table-cell" } satisfies StudentColumnMeta,
+      cell: ({ row }) => (
+        <span className="text-muted-foreground">{GENDER_LABEL[row.original.gender] ?? row.original.gender}</span>
+      ),
     },
     {
-      id: "province",
-      header: "Province",
-      cell: ({ row }) => row.original.provinces?.name_en ?? "—",
-    },
-    {
-      id: "school",
-      header: "School",
-      cell: ({ row }) => row.original.school_partners?.school_name ?? "—",
+      id: "location",
+      header: "Province / School",
+      meta: { className: "hidden md:table-cell" } satisfies StudentColumnMeta,
+      cell: ({ row }) => {
+        const province = row.original.provinces?.name_en;
+        const school = row.original.school_partners?.school_name;
+        if (!province && !school) return <Empty />;
+        return (
+          <div className="max-w-56 leading-tight">
+            <div className="truncate">{province ?? <Empty />}</div>
+            {school && <div className="truncate text-xs text-muted-foreground">{school}</div>}
+          </div>
+        );
+      },
     },
     {
       id: "home_visitor",
       header: "Home Visitor",
+      meta: { className: "hidden lg:table-cell" } satisfies StudentColumnMeta,
       cell: ({ row }) => {
         const visits = row.original.social_assessments;
-        if (visits.length === 0) return "---";
+        if (visits.length === 0) return <Empty />;
         const latest = visits.reduce((a, b) => (b.visit_number > a.visit_number ? b : a));
-        return latest.visitor_name || "---";
+        return latest.visitor_name ? <span className="truncate">{latest.visitor_name}</span> : <Empty />;
       },
     },
     {
@@ -123,9 +121,15 @@ export function getStudentColumns(
         // "committee_review" under the hood (see displayStudentStatus).
         const inCommitteeQueue = row.original.status === "committee_review";
         const badge = (
-          <Badge className={cn(STUDENT_STATUS_BADGE_CLASSES[displayStatus] ?? "bg-muted text-muted-foreground")}>
+          <Badge
+            className={cn(
+              "capitalize",
+              STUDENT_STATUS_BADGE_CLASSES[displayStatus] ?? "bg-muted text-muted-foreground",
+            )}
+          >
+            <span className="size-1.5 rounded-full bg-current opacity-70" aria-hidden />
             {displayStatus.replace(/_/g, " ")}
-            {inCommitteeQueue && <Gavel className="ml-1 size-3" />}
+            {inCommitteeQueue && <Gavel />}
           </Badge>
         );
         return (
@@ -146,54 +150,95 @@ export function getStudentColumns(
     {
       id: "poor_level",
       header: "Poor Level",
+      meta: { className: "hidden sm:table-cell" } satisfies StudentColumnMeta,
       cell: ({ row }) => {
         const poorLevel = row.original.committee_decisions?.poor_level;
-        if (!poorLevel) return "—";
-        return <Badge className={cn(POOR_LEVEL_BADGE_CLASSES[poorLevel])}>{poorLevel}</Badge>;
+        if (!poorLevel) return <Empty />;
+        return <Badge className={cn("min-w-8", POOR_LEVEL_BADGE_CLASSES[poorLevel])}>{poorLevel}</Badge>;
       },
     },
     {
       id: "ngo",
       header: "NGO",
-      cell: ({ row }) => row.original.ngo_partners?.organization_name ?? "—",
+      meta: { className: "hidden xl:table-cell" } satisfies StudentColumnMeta,
+      cell: ({ row }) => {
+        const ngo = row.original.ngo_partners?.organization_name;
+        return ngo ? <span className="block max-w-40 truncate">{ngo}</span> : <Empty />;
+      },
     },
     {
       id: "actions",
-      header: "",
+      header: () => <span className="sr-only">Actions</span>,
+      meta: { className: "w-px text-right" } satisfies StudentColumnMeta,
       cell: ({ row }) => {
+        const s = row.original;
+        const fullName = `${s.first_name} ${s.last_name}`;
+        const committeeRelevant = !PRE_HOME_VISIT_STATUSES.has(s.status);
         // home_visit_team only gets the button on cases where they're the
         // one who recorded the social form (see migration 0026) — other
         // roles with the capability can send any case.
         const canSendThisOne =
+          s.status !== "registered" &&
           can(role, "sendToCommittee") &&
-          (role !== "home_visit_team" ||
-            row.original.social_assessments.some((sa) => sa.visitor_id === currentUserId));
+          (role !== "home_visit_team" || s.social_assessments.some((sa) => sa.visitor_id === currentUserId));
+
+        async function handleSend() {
+          if (!window.confirm(`Send ${fullName} to the committee?`)) return;
+          try {
+            await sendToCommittee(s.id);
+            toast.success("Sent to committee");
+            onChanged();
+          } catch (error) {
+            toast.error(error instanceof Error ? error.message : "Failed to send to committee");
+          }
+        }
+
+        async function handleDelete() {
+          if (
+            !window.confirm(
+              `Delete ${fullName} (${s.student_code})? This can be restored by an admin later.`,
+            )
+          ) {
+            return;
+          }
+          try {
+            await softDeleteStudent(s.id);
+            toast.success("Student deleted");
+            onChanged();
+          } catch (error) {
+            toast.error(error instanceof Error ? error.message : "Failed to delete student");
+          }
+        }
 
         return (
-          <div className="flex items-center gap-1">
-            {row.original.status !== "registered" && canSendThisOne && (
+          <div className="flex items-center justify-end gap-0.5">
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Link
+                    href={`/students/${s.id}/social-form`}
+                    className={cn(
+                      buttonVariants({ variant: "ghost", size: "icon-sm" }),
+                      "text-muted-foreground hover:text-pink-600",
+                    )}
+                    aria-label="Social form"
+                  />
+                }
+              >
+                <HeartHandshake className="size-4" />
+              </TooltipTrigger>
+              <TooltipContent>Social Form</TooltipContent>
+            </Tooltip>
+            {canSendThisOne && (
               <Tooltip>
                 <TooltipTrigger
                   render={
                     <Button
                       variant="ghost"
                       size="icon-sm"
-                      onClick={async () => {
-                        if (
-                          !window.confirm(
-                            `Send ${row.original.first_name} ${row.original.last_name} to the committee?`,
-                          )
-                        ) {
-                          return;
-                        }
-                        try {
-                          await sendToCommittee(row.original.id);
-                          toast.success("Sent to committee");
-                          onChanged();
-                        } catch (error) {
-                          toast.error(error instanceof Error ? error.message : "Failed to send to committee");
-                        }
-                      }}
+                      className="text-muted-foreground hover:text-primary"
+                      onClick={handleSend}
+                      aria-label="Send to committee"
                     />
                   }
                 >
@@ -202,41 +247,49 @@ export function getStudentColumns(
                 <TooltipContent>Send to Committee</TooltipContent>
               </Tooltip>
             )}
-            <RoleGate capability="createEditStudents">
-              <DropdownMenu>
-                <DropdownMenuTrigger render={<Button variant="ghost" size="icon-sm" />}>
-                  <MoreHorizontal className="size-4" />
-                </DropdownMenuTrigger>
-                <DropdownMenuContent>
-                  <DropdownMenuItem render={<Link href={`/students/${row.original.id}/edit`} />}>
-                    <Pencil className="size-4" />
-                    Edit
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                render={
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    className="text-muted-foreground"
+                    aria-label={`More actions for ${fullName}`}
+                  />
+                }
+              >
+                <MoreHorizontal className="size-4" />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="min-w-44">
+                <DropdownMenuItem render={<Link href={`/students/${s.id}`} />}>
+                  <Eye className="size-4" />
+                  View profile
+                </DropdownMenuItem>
+                <DropdownMenuItem render={<Link href={`/students/${s.id}/social-form`} />}>
+                  <HeartHandshake className="size-4" />
+                  Social form
+                </DropdownMenuItem>
+                {committeeRelevant && (
+                  <DropdownMenuItem render={<Link href={`/committee/${s.id}`} />}>
+                    <Gavel className="size-4" />
+                    Committee
                   </DropdownMenuItem>
-                  <DropdownMenuItem
-                    variant="destructive"
-                    onClick={async () => {
-                      if (
-                        !window.confirm(
-                          `Delete ${row.original.first_name} ${row.original.last_name} (${row.original.student_code})? This can be restored by an admin later.`,
-                        )
-                      ) {
-                        return;
-                      }
-                      try {
-                        await softDeleteStudent(row.original.id);
-                        toast.success("Student deleted");
-                        onChanged();
-                      } catch (error) {
-                        toast.error(error instanceof Error ? error.message : "Failed to delete student");
-                      }
-                    }}
-                  >
-                    <Trash2 className="size-4" />
-                    Delete
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </RoleGate>
+                )}
+                {canEdit && (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem render={<Link href={`/students/${s.id}/edit`} />}>
+                      <Pencil className="size-4" />
+                      Edit
+                    </DropdownMenuItem>
+                    <DropdownMenuItem variant="destructive" onClick={handleDelete}>
+                      <Trash2 className="size-4" />
+                      Delete
+                    </DropdownMenuItem>
+                  </>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         );
       },

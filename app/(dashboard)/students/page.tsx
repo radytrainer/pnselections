@@ -17,7 +17,10 @@ import { getSignedStudentDocumentUrls, pickLatestPhotoPath } from "@/lib/storage
 import { StudentsTable } from "@/components/tables/StudentsTable";
 import { StudentImportDialog } from "@/components/forms/StudentImportDialog";
 import { CycleSelect } from "@/components/forms/CycleSelect";
-import { buttonVariants } from "@/components/ui/button";
+import { Plus, Search, Trash2, X } from "lucide-react";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -64,6 +67,10 @@ export default function StudentsPage() {
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  // What's typed in the box; `search` follows it after a short pause so each
+  // keystroke doesn't fire a request.
+  const [searchInput, setSearchInput] = useState("");
+  const searchRef = useRef<HTMLInputElement>(null);
   const [status, setStatus] = useState<string>("");
   const [homeVisitor, setHomeVisitor] = useState<string>("");
   const [provinceId, setProvinceId] = useState<string>("");
@@ -80,7 +87,10 @@ export default function StudentsPage() {
       if (raw) {
         const saved: Partial<StoredListState> = JSON.parse(raw);
         if (saved.page) setPage(saved.page);
-        if (saved.search) setSearch(saved.search);
+        if (saved.search) {
+          setSearch(saved.search);
+          setSearchInput(saved.search);
+        }
         if (saved.status) setStatus(saved.status);
         if (saved.homeVisitor) setHomeVisitor(saved.homeVisitor);
         if (saved.provinceId) setProvinceId(saved.provinceId);
@@ -97,6 +107,41 @@ export default function StudentsPage() {
     const state: StoredListState = { page, search, status, homeVisitor, provinceId, ngoName };
     sessionStorage.setItem(LIST_STATE_KEY, JSON.stringify(state));
   }, [restored, page, search, status, homeVisitor, provinceId, ngoName]);
+
+  useEffect(() => {
+    const next = searchInput.trim();
+    if (next === search) return;
+    const t = setTimeout(() => {
+      setPage(1);
+      setSearch(next);
+    }, 300);
+    return () => clearTimeout(t);
+  }, [searchInput, search]);
+
+  // "/" jumps to the search box from anywhere on the page.
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key !== "/" || e.metaKey || e.ctrlKey || e.altKey) return;
+      const el = e.target as HTMLElement;
+      if (el.closest("input, textarea, select, [contenteditable='true']")) return;
+      e.preventDefault();
+      searchRef.current?.focus();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  const activeFilterCount = [search, status, homeVisitor, provinceId, ngoName].filter(Boolean).length;
+
+  function clearFilters() {
+    setPage(1);
+    setSearch("");
+    setSearchInput("");
+    setStatus("");
+    setHomeVisitor("");
+    setProvinceId("");
+    setNgoName("");
+  }
 
   useEffect(() => {
     listProvinces().then(setProvinces).catch(() => toast.error("Failed to load provinces"));
@@ -177,17 +222,42 @@ export default function StudentsPage() {
       .catch(() => {});
   }, [restored, cyclesLoading, search, status, homeVisitor, provinceId, ngoIds, cycleId]);
 
+  const selectTriggerClass = "w-full sm:w-44";
+
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold">Students</h1>
-          <p className="text-sm text-muted-foreground">
-            All students across the active selection pipeline.
+    <div className="space-y-5">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+        <div className="space-y-1">
+          <h1 className="text-2xl font-semibold tracking-tight">Students</h1>
+          <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
+            {genderCounts ? (
+              <>
+                <span>
+                  <span className="font-medium text-foreground tabular-nums">{genderCounts.total}</span>{" "}
+                  {activeFilterCount > 0 ? "matching" : "total"}
+                </span>
+                <span className="inline-flex items-center gap-1.5">
+                  <span className="size-2 rounded-full bg-sky-500" aria-hidden />
+                  <span className="tabular-nums">{genderCounts.male}</span> male
+                </span>
+                <span className="inline-flex items-center gap-1.5">
+                  <span className="size-2 rounded-full bg-pink-500" aria-hidden />
+                  <span className="tabular-nums">{genderCounts.female}</span> female
+                </span>
+                {genderCounts.other > 0 && (
+                  <span className="inline-flex items-center gap-1.5">
+                    <span className="size-2 rounded-full bg-violet-500" aria-hidden />
+                    <span className="tabular-nums">{genderCounts.other}</span> other
+                  </span>
+                )}
+              </>
+            ) : (
+              "All students across the active selection pipeline."
+            )}
           </p>
         </div>
         <RoleGate capability="createEditStudents">
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <CycleSelect
               cycles={cycles}
               value={cycleId}
@@ -201,139 +271,175 @@ export default function StudentsPage() {
             />
             <StudentImportDialog onImported={fetchStudents} />
             <RoleGate capability="viewTrash">
-              <Link href="/students/trash" className={buttonVariants({ variant: "outline" })}>
-                Trash
-              </Link>
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <Link
+                      href="/students/trash"
+                      className={buttonVariants({ variant: "outline", size: "icon" })}
+                      aria-label="Trash"
+                    />
+                  }
+                >
+                  <Trash2 />
+                </TooltipTrigger>
+                <TooltipContent>Deleted students</TooltipContent>
+              </Tooltip>
             </RoleGate>
             <Link href="/students/new" className={buttonVariants()}>
+              <Plus />
               New Student
             </Link>
           </div>
         </RoleGate>
       </div>
 
-      <div className="flex flex-wrap gap-3">
-        <Input
-          placeholder="Search name or code..."
-          value={search}
-          onChange={(e) => {
-            setPage(1);
-            setSearch(e.target.value);
-          }}
-          className="max-w-xs"
-        />
-        <Select
-          value={status}
-          onValueChange={(value) => {
-            setPage(1);
-            setStatus(value ?? "");
-          }}
-        >
-          <SelectTrigger className="w-48">
-            <SelectValue placeholder="All statuses">
-              {(value: string) => (value ? value.replace(/_/g, " ") : "All statuses")}
-            </SelectValue>
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="">All statuses</SelectItem>
-            {STUDENT_STATUSES.map((s) => (
-              <SelectItem key={s} value={s}>
-                {s.replace(/_/g, " ")}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Select
-          value={homeVisitor}
-          onValueChange={(value) => {
-            setPage(1);
-            setHomeVisitor(value ?? "");
-          }}
-        >
-          <SelectTrigger className="w-48">
-            <SelectValue placeholder="All visitors">
-              {(value: string) => value || "All visitors"}
-            </SelectValue>
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="">All visitors</SelectItem>
-            {homeVisitors.map((v) => (
-              <SelectItem key={v} value={v}>
-                {v}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Select
-          value={provinceId}
-          onValueChange={(value) => {
-            setPage(1);
-            setProvinceId(value ?? "");
-          }}
-        >
-          <SelectTrigger className="w-48">
-            <SelectValue placeholder="All provinces">
-              {(value: string) => {
-                if (!value) return "All provinces";
-                if (value === "__none__") return "No province";
-                return provinces.find((p) => p.id === value)?.name_en ?? "All provinces";
+      <div className="flex flex-col gap-2 lg:flex-row lg:items-center">
+        <div className="relative w-full lg:max-w-sm">
+          <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            ref={searchRef}
+            type="search"
+            placeholder="Search by name or student code"
+            aria-label="Search students"
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") setSearchInput("");
+            }}
+            className="h-9 pr-9 pl-9 [&::-webkit-search-cancel-button]:hidden"
+          />
+          {searchInput ? (
+            <button
+              type="button"
+              onClick={() => {
+                setSearchInput("");
+                searchRef.current?.focus();
               }}
-            </SelectValue>
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="">All provinces</SelectItem>
-            <SelectItem value="__none__">No province set</SelectItem>
-            {provinces.map((p) => (
-              <SelectItem key={p.id} value={p.id}>
-                {p.name_en}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Select
-          value={ngoName}
-          onValueChange={(value) => {
-            setPage(1);
-            setNgoName(value ?? "");
-          }}
-        >
-          <SelectTrigger className="w-48">
-            <SelectValue placeholder="All NGOs">{(value: string) => value || "All NGOs"}</SelectValue>
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="">All NGOs</SelectItem>
-            {ngoOptions.map((n) => (
-              <SelectItem key={n.name} value={n.name}>
-                {n.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+              className="absolute top-1/2 right-2 flex size-5 -translate-y-1/2 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
+              aria-label="Clear search"
+            >
+              <X className="size-3.5" />
+            </button>
+          ) : (
+            <kbd className="pointer-events-none absolute top-1/2 right-2.5 hidden -translate-y-1/2 rounded border bg-muted px-1.5 font-mono text-[10px] text-muted-foreground sm:block">
+              /
+            </kbd>
+          )}
+        </div>
+
+        <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center">
+          <Select
+            value={status}
+            onValueChange={(value) => {
+              setPage(1);
+              setStatus(value ?? "");
+            }}
+          >
+            <SelectTrigger className={cn(selectTriggerClass, status && "border-primary/40 bg-primary/5")}>
+              <SelectValue placeholder="All statuses">
+                {(value: string) => (
+                  <span className="capitalize">{value ? value.replace(/_/g, " ") : "All statuses"}</span>
+                )}
+              </SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="">All statuses</SelectItem>
+              {STUDENT_STATUSES.map((s) => (
+                <SelectItem key={s} value={s}>
+                  <span className="capitalize">{s.replace(/_/g, " ")}</span>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select
+            value={provinceId}
+            onValueChange={(value) => {
+              setPage(1);
+              setProvinceId(value ?? "");
+            }}
+          >
+            <SelectTrigger className={cn(selectTriggerClass, provinceId && "border-primary/40 bg-primary/5")}>
+              <SelectValue placeholder="All provinces">
+                {(value: string) => {
+                  if (!value) return "All provinces";
+                  if (value === "__none__") return "No province";
+                  return provinces.find((p) => p.id === value)?.name_en ?? "All provinces";
+                }}
+              </SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="">All provinces</SelectItem>
+              <SelectItem value="__none__">No province set</SelectItem>
+              {provinces.map((p) => (
+                <SelectItem key={p.id} value={p.id}>
+                  {p.name_en}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select
+            value={homeVisitor}
+            onValueChange={(value) => {
+              setPage(1);
+              setHomeVisitor(value ?? "");
+            }}
+          >
+            <SelectTrigger className={cn(selectTriggerClass, homeVisitor && "border-primary/40 bg-primary/5")}>
+              <SelectValue placeholder="All visitors">
+                {(value: string) => value || "All visitors"}
+              </SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="">All visitors</SelectItem>
+              {homeVisitors.map((v) => (
+                <SelectItem key={v} value={v}>
+                  {v}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select
+            value={ngoName}
+            onValueChange={(value) => {
+              setPage(1);
+              setNgoName(value ?? "");
+            }}
+          >
+            <SelectTrigger className={cn(selectTriggerClass, ngoName && "border-primary/40 bg-primary/5")}>
+              <SelectValue placeholder="All NGOs">{(value: string) => value || "All NGOs"}</SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="">All NGOs</SelectItem>
+              {ngoOptions.map((n) => (
+                <SelectItem key={n.name} value={n.name}>
+                  {n.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {activeFilterCount > 0 && (
+            <Button variant="ghost" size="sm" className="text-muted-foreground" onClick={clearFilters}>
+              <X />
+              Clear filters
+            </Button>
+          )}
+        </div>
       </div>
 
-      {genderCounts && (
-        <p className="text-sm text-muted-foreground">
-          {genderCounts.total} student{genderCounts.total === 1 ? "" : "s"} · {genderCounts.male} male ·{" "}
-          {genderCounts.female} female
-          {genderCounts.other > 0 ? ` · ${genderCounts.other} other` : ""}
-        </p>
-      )}
-
-      {loading ? (
-        <p className="text-sm text-muted-foreground">Loading students...</p>
-      ) : (
-        <StudentsTable
-          data={data}
-          page={page}
-          pageSize={PAGE_SIZE}
-          total={total}
-          onPageChange={setPage}
-          onChanged={fetchStudents}
-          role={role}
-          currentUserId={myUserId}
-          photoUrls={photoUrls}
-        />
-      )}
+      <StudentsTable
+        data={data}
+        loading={loading}
+        page={page}
+        pageSize={PAGE_SIZE}
+        total={total}
+        onPageChange={setPage}
+        onChanged={fetchStudents}
+        onClearFilters={activeFilterCount > 0 ? clearFilters : undefined}
+        role={role}
+        currentUserId={myUserId}
+        photoUrls={photoUrls}
+      />
     </div>
   );
 }
