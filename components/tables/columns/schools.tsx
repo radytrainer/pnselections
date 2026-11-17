@@ -20,6 +20,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { RoleGate } from "@/components/layout/RoleGate";
+import type { ResponsiveColumnMeta } from "@/components/tables/ResponsiveDataTable";
 import { OUTREACH_STATUSES, OUTREACH_STATUS_LABELS, type OutreachStatus } from "@/lib/constants";
 import { initials } from "@/lib/initials";
 import {
@@ -47,6 +48,7 @@ export function getSchoolColumns(onChanged: () => void): ColumnDef<SchoolListIte
     {
       id: "logo",
       header: "",
+      meta: { card: "media", className: "w-12" } satisfies ResponsiveColumnMeta<SchoolListItemWithStats>,
       cell: ({ row }) => (
         <Avatar>
           <AvatarImage src={row.original.logo_url ?? undefined} alt={row.original.school_name} />
@@ -56,6 +58,7 @@ export function getSchoolColumns(onChanged: () => void): ColumnDef<SchoolListIte
     },
     {
       accessorKey: "school_name",
+      meta: { card: "title" } satisfies ResponsiveColumnMeta<SchoolListItemWithStats>,
       header: "School",
       cell: ({ row }) => (
         <Link href={`/schools/${row.original.id}`} className="font-medium hover:underline">
@@ -66,6 +69,7 @@ export function getSchoolColumns(onChanged: () => void): ColumnDef<SchoolListIte
     {
       id: "contact",
       header: "Contact",
+      meta: { card: "detail" } satisfies ResponsiveColumnMeta<SchoolListItemWithStats>,
       cell: ({ row }) => (
         <div className="text-sm">
           <p>{row.original.principal_name ?? "—"}</p>
@@ -76,11 +80,13 @@ export function getSchoolColumns(onChanged: () => void): ColumnDef<SchoolListIte
     {
       id: "province",
       header: "Province",
+      meta: { card: "summary" } satisfies ResponsiveColumnMeta<SchoolListItemWithStats>,
       cell: ({ row }) => row.original.provinces?.name_en ?? "—",
     },
     {
       id: "outreach",
       header: "Outreach",
+      meta: { card: "detail" } satisfies ResponsiveColumnMeta<SchoolListItemWithStats>,
       cell: ({ row }) => (
         <div>
           <Select
@@ -117,21 +123,32 @@ export function getSchoolColumns(onChanged: () => void): ColumnDef<SchoolListIte
     {
       id: "referred",
       header: "Referred",
+      meta: { card: "detail" } satisfies ResponsiveColumnMeta<SchoolListItemWithStats>,
       cell: ({ row }) => <StatPill value={row.original.referred} />,
     },
     {
       id: "selected",
       header: "Selected",
+      meta: { card: "detail" } satisfies ResponsiveColumnMeta<SchoolListItemWithStats>,
       cell: ({ row }) => <StatPill value={row.original.selected} />,
     },
     {
       id: "this_cycle",
       header: "This Cycle",
+      meta: {
+        card: "summary",
+        cardCell: (r) => (
+          <span className="inline-flex items-center gap-1.5">
+            <StatPill value={r.referredThisCycle} emphasis /> this cycle
+          </span>
+        ),
+      } satisfies ResponsiveColumnMeta<SchoolListItemWithStats>,
       cell: ({ row }) => <StatPill value={row.original.referredThisCycle} emphasis />,
     },
     {
       id: "actions",
       header: "",
+      meta: { card: "actions", className: "w-px" } satisfies ResponsiveColumnMeta<SchoolListItemWithStats>,
       cell: ({ row }) => (
         <RoleGate capability="managePartners">
           <DropdownMenu>

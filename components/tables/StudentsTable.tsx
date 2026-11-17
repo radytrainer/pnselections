@@ -23,6 +23,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Skeleton } from "@/components/ui/skeleton";
+import { StudentCard } from "@/components/students/StudentCard";
 import { can } from "@/lib/rbac";
 import { cn } from "@/lib/utils";
 import { bulkSoftDeleteStudents, type StudentListItem } from "@/services/studentService";
@@ -133,11 +134,27 @@ export function StudentsTable({
   }
 
   const headers = table.getHeaderGroups()[0]?.headers ?? [];
+  const rows = table.getRowModel().rows;
+
+  const emptyState = (
+    <div className="flex flex-col items-center gap-2 text-center">
+      <div className="flex size-10 items-center justify-center rounded-full bg-muted">
+        <SearchX className="size-5 text-muted-foreground" />
+      </div>
+      <p className="font-medium">No students found</p>
+      <p className="text-sm text-muted-foreground">Try a different name or code, or loosen the filters.</p>
+      {onClearFilters && (
+        <Button variant="outline" size="sm" className="mt-1" onClick={onClearFilters}>
+          Clear filters
+        </Button>
+      )}
+    </div>
+  );
 
   return (
-    <div className="overflow-hidden rounded-xl border bg-card shadow-xs">
+    <div className="space-y-3 lg:space-y-0 lg:overflow-hidden lg:rounded-xl lg:border lg:bg-card lg:shadow-xs">
       {canBulkDelete && selectedIds.length > 0 && (
-        <div className="flex items-center justify-between gap-3 border-b bg-primary/5 px-4 py-2">
+        <div className="sticky top-0 z-10 flex items-center justify-between gap-3 rounded-lg border bg-primary/5 px-4 py-2 backdrop-blur lg:static lg:rounded-none lg:border-0 lg:border-b">
           <div className="flex items-center gap-2 text-sm font-medium">
             <Button
               variant="ghost"
@@ -156,6 +173,8 @@ export function StudentsTable({
         </div>
       )}
 
+      {/* Desktop: full table */}
+      <div className="hidden lg:block">
       <Table>
         <TableHeader className="bg-muted/40">
           {table.getHeaderGroups().map((headerGroup) => (
@@ -200,8 +219,8 @@ export function StudentsTable({
                 ))}
               </TableRow>
             ))
-          ) : table.getRowModel().rows.length ? (
-            table.getRowModel().rows.map((row) => (
+          ) : rows.length ? (
+            rows.map((row) => (
               <TableRow
                 key={row.id}
                 data-state={row.getIsSelected() && "selected"}
@@ -225,25 +244,60 @@ export function StudentsTable({
           ) : (
             <TableRow className="hover:bg-transparent">
               <TableCell colSpan={columns.length} className="py-16">
-                <div className="flex flex-col items-center gap-2 text-center">
-                  <div className="flex size-10 items-center justify-center rounded-full bg-muted">
-                    <SearchX className="size-5 text-muted-foreground" />
-                  </div>
-                  <p className="font-medium">No students found</p>
-                  <p className="text-sm text-muted-foreground">Try a different name or code, or loosen the filters.</p>
-                  {onClearFilters && (
-                    <Button variant="outline" size="sm" className="mt-1" onClick={onClearFilters}>
-                      Clear filters
-                    </Button>
-                  )}
-                </div>
+                {emptyState}
               </TableCell>
             </TableRow>
           )}
         </TableBody>
       </Table>
+      </div>
 
-      <div className="flex flex-col gap-2 border-t px-4 py-3 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
+      {/* Phone / tablet: cards with the essentials; details expand on tap */}
+      <div className="space-y-2 lg:hidden">
+        {canBulkDelete && !loading && rows.length > 0 && (
+          <label className="flex w-fit items-center gap-2 px-1 text-sm text-muted-foreground">
+            <Checkbox
+              checked={table.getIsAllPageRowsSelected()}
+              onCheckedChange={(v) => table.toggleAllPageRowsSelected(!!v)}
+              aria-label="Select all on this page"
+            />
+            Select all on this page
+          </label>
+        )}
+        {loading ? (
+          <ul className="grid gap-2 md:grid-cols-2">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <li key={i} className="flex items-center gap-3 rounded-xl border bg-card p-3">
+                <Skeleton className="size-10 rounded-full" />
+                <div className="flex-1 space-y-2">
+                  <Skeleton className="h-3.5 w-36" />
+                  <Skeleton className="h-3 w-24" />
+                </div>
+              </li>
+            ))}
+          </ul>
+        ) : rows.length ? (
+          <ul className="grid items-start gap-2 md:grid-cols-2">
+            {rows.map((row) => (
+              <StudentCard
+                key={row.id}
+                student={row.original}
+                photoUrls={photoUrls ?? {}}
+                role={role}
+                currentUserId={currentUserId}
+                onChanged={onChanged}
+                selectable={canBulkDelete}
+                selected={row.getIsSelected()}
+                onSelectedChange={(v) => row.toggleSelected(v)}
+              />
+            ))}
+          </ul>
+        ) : (
+          <div className="rounded-xl border bg-card px-4 py-12">{emptyState}</div>
+        )}
+      </div>
+
+      <div className="flex flex-col gap-2 rounded-xl border bg-card px-4 py-3 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between lg:rounded-none lg:border-0 lg:border-t lg:bg-transparent">
         <span>
           {total === 0 ? (
             "No results"

@@ -1,26 +1,12 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import {
-  flexRender,
-  getCoreRowModel,
-  useReactTable,
-  type ColumnDef,
-  type RowSelectionState,
-} from "@tanstack/react-table";
+import type { RowSelectionState } from "@tanstack/react-table";
 import { toast } from "sonner";
 import { Trash2 } from "lucide-react";
 import { getSchoolColumns } from "@/components/tables/columns/schools";
-import { Checkbox } from "@/components/ui/checkbox";
+import { ResponsiveDataTable } from "@/components/tables/ResponsiveDataTable";
 import { Button } from "@/components/ui/button";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { RoleGate } from "@/components/layout/RoleGate";
 import { softDeleteSchoolPartner, type SchoolListItemWithStats } from "@/services/schoolService";
 
@@ -34,35 +20,7 @@ export function SchoolsTable({
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
   const [deleting, setDeleting] = useState(false);
 
-  const columns = useMemo<ColumnDef<SchoolListItemWithStats>[]>(
-    () => [
-      {
-        id: "select",
-        header: ({ table }) => (
-          <Checkbox
-            checked={table.getIsAllPageRowsSelected()}
-            indeterminate={table.getIsSomePageRowsSelected() && !table.getIsAllPageRowsSelected()}
-            onCheckedChange={(checked) => table.toggleAllPageRowsSelected(checked === true)}
-          />
-        ),
-        cell: ({ row }) => (
-          <Checkbox checked={row.getIsSelected()} onCheckedChange={(checked) => row.toggleSelected(checked === true)} />
-        ),
-      },
-      ...getSchoolColumns(onChanged),
-    ],
-    [onChanged],
-  );
-
-  const table = useReactTable({
-    data,
-    columns,
-    state: { rowSelection },
-    onRowSelectionChange: setRowSelection,
-    getRowId: (row) => row.id,
-    getCoreRowModel: getCoreRowModel(),
-  });
-
+  const columns = useMemo(() => getSchoolColumns(onChanged), [onChanged]);
   const selectedIds = Object.keys(rowSelection).filter((id) => rowSelection[id]);
 
   async function handleBulkDelete() {
@@ -96,42 +54,15 @@ export function SchoolsTable({
           </div>
         </RoleGate>
       )}
-      <div className="rounded-md border">
-        <Table>
-          <TableHeader>
-            {table.getHeaderGroups().map((headerGroup) => (
-              <TableRow key={headerGroup.id}>
-                {headerGroup.headers.map((header) => (
-                  <TableHead key={header.id}>
-                    {header.isPlaceholder
-                      ? null
-                      : flexRender(header.column.columnDef.header, header.getContext())}
-                  </TableHead>
-                ))}
-              </TableRow>
-            ))}
-          </TableHeader>
-          <TableBody>
-            {table.getRowModel().rows.length ? (
-              table.getRowModel().rows.map((row) => (
-                <TableRow key={row.id}>
-                  {row.getVisibleCells().map((cell) => (
-                    <TableCell key={cell.id}>
-                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                    </TableCell>
-                  ))}
-                </TableRow>
-              ))
-            ) : (
-              <TableRow>
-                <TableCell colSpan={columns.length} className="h-24 text-center text-muted-foreground">
-                  No school partners found.
-                </TableCell>
-              </TableRow>
-            )}
-          </TableBody>
-        </Table>
-      </div>
+      <ResponsiveDataTable
+        data={data}
+        columns={columns}
+        getRowId={(row) => row.id}
+        empty="No school partners found."
+        selectable
+        rowSelection={rowSelection}
+        onRowSelectionChange={setRowSelection}
+      />
     </div>
   );
 }

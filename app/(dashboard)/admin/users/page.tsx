@@ -21,15 +21,8 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import { Skeleton } from "@/components/ui/skeleton";
+import type { ColumnDef } from "@tanstack/react-table";
+import { ResponsiveDataTable, type ResponsiveColumnMeta } from "@/components/tables/ResponsiveDataTable";
 import { SearchInput, matchesSearch } from "@/components/forms/SearchInput";
 
 type AdminUser = {
@@ -121,6 +114,70 @@ export default function AdminUsersPage() {
     load();
   }
 
+  const columns = useMemo<ColumnDef<AdminUser>[]>(
+    () => [
+      {
+        id: "name",
+        header: "Name",
+        meta: {
+          card: "title",
+          cardCell: (u) => (
+            <div className="min-w-0">
+              <p className="truncate font-medium">{u.full_name}</p>
+              <p className="truncate text-xs text-muted-foreground">{u.email}</p>
+            </div>
+          ),
+        } satisfies ResponsiveColumnMeta<AdminUser>,
+        cell: ({ row }) => <span className="font-medium">{row.original.full_name}</span>,
+      },
+      {
+        id: "email",
+        header: "Email",
+        meta: { card: "hidden" } satisfies ResponsiveColumnMeta<AdminUser>,
+        cell: ({ row }) => row.original.email,
+      },
+      {
+        id: "role",
+        header: "Role",
+        meta: { card: "summary" } satisfies ResponsiveColumnMeta<AdminUser>,
+        cell: ({ row }) =>
+          row.original.role ? <Badge variant="outline" className="capitalize">{row.original.role.replace(/_/g, " ")}</Badge> : "—",
+      },
+      {
+        id: "status",
+        header: "Status",
+        meta: { card: "summary" } satisfies ResponsiveColumnMeta<AdminUser>,
+        cell: ({ row }) => <span className="capitalize">{row.original.status}</span>,
+      },
+      {
+        id: "actions",
+        header: "",
+        meta: { card: "actions", className: "w-px" } satisfies ResponsiveColumnMeta<AdminUser>,
+        cell: ({ row }) => (
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              aria-label={`Actions for ${row.original.full_name}`}
+              className="inline-flex items-center justify-center rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+            >
+              <MoreHorizontal className="size-4" />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => setEditingUser(row.original)}>
+                <Pencil className="size-4" />
+                Edit
+              </DropdownMenuItem>
+              <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => setDeletingUser(row.original)}>
+                <Trash2 className="size-4" />
+                Delete
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        ),
+      },
+    ],
+    [],
+  );
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -148,61 +205,13 @@ export default function AdminUsersPage() {
         )}
       </div>
 
-      {loading ? (
-        <Skeleton className="h-64 w-full" />
-      ) : (
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Name</TableHead>
-              <TableHead>Email</TableHead>
-              <TableHead>Role</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead></TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {visibleUsers.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={5} className="h-24 text-center text-muted-foreground">
-                  {users.length === 0 ? "No users yet." : `No users match "${search}".`}
-                </TableCell>
-              </TableRow>
-            ) : (
-              visibleUsers.map((u) => (
-                <TableRow key={u.id}>
-                  <TableCell>{u.full_name}</TableCell>
-                  <TableCell>{u.email}</TableCell>
-                  <TableCell>
-                    {u.role ? <Badge variant="outline">{u.role.replace(/_/g, " ")}</Badge> : "—"}
-                  </TableCell>
-                  <TableCell className="capitalize">{u.status}</TableCell>
-                  <TableCell>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger className="inline-flex items-center justify-center rounded-md p-1 text-muted-foreground hover:bg-accent hover:text-accent-foreground">
-                        <MoreHorizontal className="size-4" />
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => setEditingUser(u)}>
-                          <Pencil className="size-4" />
-                          Edit
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          className="text-destructive focus:text-destructive"
-                          onClick={() => setDeletingUser(u)}
-                        >
-                          <Trash2 className="size-4" />
-                          Delete
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </TableCell>
-                </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
-      )}
+      <ResponsiveDataTable
+        data={visibleUsers}
+        columns={columns}
+        getRowId={(u) => u.id}
+        loading={loading}
+        empty={users.length === 0 ? "No users yet." : `No users match "${search}".`}
+      />
 
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent className="sm:max-w-md">

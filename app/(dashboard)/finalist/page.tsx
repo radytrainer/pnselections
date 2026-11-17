@@ -8,14 +8,8 @@ import { AlertTriangle, Award, BarChart3, Clock, Download, Undo2 } from "lucide-
 import { listFinalists, type StudentListItem } from "@/services/studentService";
 import { recordCommitteeDecision, sendToCommittee } from "@/services/committeeService";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import type { ColumnDef } from "@tanstack/react-table";
+import { ResponsiveDataTable, type ResponsiveColumnMeta } from "@/components/tables/ResponsiveDataTable";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { CycleSelect } from "@/components/forms/CycleSelect";
@@ -126,110 +120,150 @@ function FinalistTable({
     }
   };
 
-  return (
-    <div className="rounded-md border">
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Name</TableHead>
-            <TableHead>Gender</TableHead>
-            <TableHead>Age</TableHead>
-            <TableHead>Major</TableHead>
-            <TableHead>Province</TableHead>
-            <TableHead>NGO</TableHead>
-            <TableHead>Poor Level</TableHead>
-            <TableHead></TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {data.length ? (
-            data.map((student) => {
-              const age = getAge(student);
-              const flagged = isAgeOutOfRange(age);
-              return (
-                <TableRow key={student.id}>
-                  <TableCell>
-                    <Link href={`/students/${student.id}`} className="font-medium hover:underline">
-                      {student.first_name} {student.last_name}
-                    </Link>
-                  </TableCell>
-                  <TableCell className="capitalize">{student.gender}</TableCell>
-                  <TableCell>
-                    {age != null ? (
-                      <span
-                        className={cn("inline-flex items-center gap-1", flagged && "font-semibold text-red-600")}
-                        title={
-                          flagged ? `Outside the ${MIN_ELIGIBLE_AGE}–${MAX_ELIGIBLE_AGE} eligible age range` : undefined
+  const columns: ColumnDef<StudentListItem>[] = [
+    {
+      id: "name",
+      header: "Name",
+      meta: { card: "title" } satisfies ResponsiveColumnMeta<StudentListItem>,
+      cell: ({ row }) => (
+        <Link href={`/students/${row.original.id}`} className="font-medium hover:underline">
+          {row.original.first_name} {row.original.last_name}
+        </Link>
+      ),
+    },
+    {
+      id: "gender",
+      header: "Gender",
+      meta: { card: "detail" } satisfies ResponsiveColumnMeta<StudentListItem>,
+      cell: ({ row }) => <span className="capitalize">{row.original.gender}</span>,
+    },
+    {
+      id: "age",
+      header: "Age",
+      meta: {
+        card: "summary",
+        cardCell: (student) => {
+          const age = getAge(student);
+          return age != null ? <AgeValue age={age} suffix=" yrs" /> : null;
+        },
+      } satisfies ResponsiveColumnMeta<StudentListItem>,
+      cell: ({ row }) => {
+        const age = getAge(row.original);
+        return age != null ? <AgeValue age={age} /> : "—";
+      },
+    },
+    {
+      id: "major",
+      header: "Major",
+      meta: { card: "detail" } satisfies ResponsiveColumnMeta<StudentListItem>,
+      cell: ({ row }) => getMajor(row.original) ?? "—",
+    },
+    {
+      id: "province",
+      header: "Province",
+      meta: {
+        card: "summary",
+        cardCell: (student) => student.provinces?.name_en ?? null,
+      } satisfies ResponsiveColumnMeta<StudentListItem>,
+      cell: ({ row }) => row.original.provinces?.name_en ?? "—",
+    },
+    {
+      id: "ngo",
+      header: "NGO",
+      meta: { card: "detail" } satisfies ResponsiveColumnMeta<StudentListItem>,
+      cell: ({ row }) => row.original.ngo_partners?.organization_name ?? "—",
+    },
+    {
+      id: "poor_level",
+      header: "Poor Level",
+      meta: {
+        card: "summary",
+        cardCell: (student) =>
+          student.committee_decisions?.poor_level ? (
+            <>
+              Poor level
+              <Badge className={cn(POOR_LEVEL_BADGE_CLASSES[student.committee_decisions.poor_level])}>
+                {student.committee_decisions.poor_level}
+              </Badge>
+            </>
+          ) : null,
+      } satisfies ResponsiveColumnMeta<StudentListItem>,
+      cell: ({ row }) =>
+        row.original.committee_decisions?.poor_level ? (
+          <Badge className={cn(POOR_LEVEL_BADGE_CLASSES[row.original.committee_decisions.poor_level])}>
+            {row.original.committee_decisions.poor_level}
+          </Badge>
+        ) : (
+          "—"
+        ),
+    },
+    {
+      id: "actions",
+      header: "",
+      meta: { card: "actions", className: "w-px" } satisfies ResponsiveColumnMeta<StudentListItem>,
+      cell: ({ row }) => {
+        const student = row.original;
+        return (
+          <RoleGate capability="recordCommitteeDecision">
+            <div className="flex items-center gap-1">
+              {moveTarget &&
+                (() => {
+                  const { label, icon: MoveIcon } = MOVE_TARGET_META[moveTarget];
+                  return (
+                    <Tooltip>
+                      <TooltipTrigger
+                        render={
+                          <Button
+                            variant="ghost"
+                            size="icon-sm"
+                            aria-label={label}
+                            onClick={() => handleMoveTo(student, moveTarget)}
+                          />
                         }
                       >
-                        {flagged && <AlertTriangle className="size-3.5" />}
-                        {age}
-                      </span>
-                    ) : (
-                      "—"
-                    )}
-                  </TableCell>
-                  <TableCell>{getMajor(student) ?? "—"}</TableCell>
-                  <TableCell>{student.provinces?.name_en ?? "—"}</TableCell>
-                  <TableCell>{student.ngo_partners?.organization_name ?? "—"}</TableCell>
-                  <TableCell>
-                    {student.committee_decisions?.poor_level ? (
-                      <Badge className={cn(POOR_LEVEL_BADGE_CLASSES[student.committee_decisions.poor_level])}>
-                        {student.committee_decisions.poor_level}
-                      </Badge>
-                    ) : (
-                      "—"
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    <RoleGate capability="recordCommitteeDecision">
-                      <div className="flex items-center gap-1">
-                        {moveTarget &&
-                          (() => {
-                            const { label, icon: MoveIcon } = MOVE_TARGET_META[moveTarget];
-                            return (
-                              <Tooltip>
-                                <TooltipTrigger
-                                  render={
-                                    <Button
-                                      variant="ghost"
-                                      size="icon-sm"
-                                      onClick={() => handleMoveTo(student, moveTarget)}
-                                    />
-                                  }
-                                >
-                                  <MoveIcon className="size-4" />
-                                </TooltipTrigger>
-                                <TooltipContent>{label}</TooltipContent>
-                              </Tooltip>
-                            );
-                          })()}
-                        <Tooltip>
-                          <TooltipTrigger
-                            render={
-                              <Button variant="ghost" size="icon-sm" onClick={() => handleSendBack(student)} />
-                            }
-                          >
-                            <Undo2 className="size-4" />
-                          </TooltipTrigger>
-                          <TooltipContent>Send Back to Committee</TooltipContent>
-                        </Tooltip>
-                      </div>
-                    </RoleGate>
-                  </TableCell>
-                </TableRow>
-              );
-            })
-          ) : (
-            <TableRow>
-              <TableCell colSpan={8} className="h-24 text-center text-muted-foreground">
-                {emptyLabel}
-              </TableCell>
-            </TableRow>
-          )}
-        </TableBody>
-      </Table>
-    </div>
+                        <MoveIcon className="size-4" />
+                      </TooltipTrigger>
+                      <TooltipContent>{label}</TooltipContent>
+                    </Tooltip>
+                  );
+                })()}
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      aria-label="Send back to committee"
+                      onClick={() => handleSendBack(student)}
+                    />
+                  }
+                >
+                  <Undo2 className="size-4" />
+                </TooltipTrigger>
+                <TooltipContent>Send Back to Committee</TooltipContent>
+              </Tooltip>
+            </div>
+          </RoleGate>
+        );
+      },
+    },
+  ];
+
+  return <ResponsiveDataTable data={data} columns={columns} getRowId={(s) => s.id} empty={emptyLabel} />;
+}
+
+/** Age, flagged red with a warning icon when outside the eligible range. */
+function AgeValue({ age, suffix = "" }: { age: number; suffix?: string }) {
+  const flagged = isAgeOutOfRange(age);
+  return (
+    <span
+      className={cn("inline-flex items-center gap-1", flagged && "font-semibold text-red-600")}
+      title={flagged ? `Outside the ${MIN_ELIGIBLE_AGE}–${MAX_ELIGIBLE_AGE} eligible age range` : undefined}
+    >
+      {flagged && <AlertTriangle className="size-3.5" />}
+      {age}
+      {suffix}
+    </span>
   );
 }
 

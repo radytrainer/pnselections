@@ -20,6 +20,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { RoleGate } from "@/components/layout/RoleGate";
+import type { ResponsiveColumnMeta } from "@/components/tables/ResponsiveDataTable";
 import { OUTREACH_STATUSES, OUTREACH_STATUS_LABELS, type OutreachStatus } from "@/lib/constants";
 import { initials } from "@/lib/initials";
 import {
@@ -47,6 +48,7 @@ export function getNgoColumns(onChanged: () => void): ColumnDef<NgoListItemWithS
     {
       id: "logo",
       header: "",
+      meta: { card: "media", className: "w-12" } satisfies ResponsiveColumnMeta<NgoListItemWithStats>,
       cell: ({ row }) => (
         <Avatar>
           <AvatarImage src={row.original.logo_url ?? undefined} alt={row.original.organization_name} />
@@ -56,6 +58,7 @@ export function getNgoColumns(onChanged: () => void): ColumnDef<NgoListItemWithS
     },
     {
       accessorKey: "organization_name",
+      meta: { card: "title" } satisfies ResponsiveColumnMeta<NgoListItemWithStats>,
       header: "NGO",
       cell: ({ row }) => (
         <div>
@@ -80,6 +83,7 @@ export function getNgoColumns(onChanged: () => void): ColumnDef<NgoListItemWithS
     {
       id: "contact",
       header: "Contact",
+      meta: { card: "detail" } satisfies ResponsiveColumnMeta<NgoListItemWithStats>,
       cell: ({ row }) => (
         <div className="text-sm">
           <p>{row.original.contact_person ?? "—"}</p>
@@ -90,11 +94,13 @@ export function getNgoColumns(onChanged: () => void): ColumnDef<NgoListItemWithS
     {
       id: "province",
       header: "Province",
+      meta: { card: "summary" } satisfies ResponsiveColumnMeta<NgoListItemWithStats>,
       cell: ({ row }) => row.original.provinces?.name_en ?? "—",
     },
     {
       id: "outreach",
       header: "Outreach",
+      meta: { card: "detail" } satisfies ResponsiveColumnMeta<NgoListItemWithStats>,
       cell: ({ row }) => (
         <div>
           <Select
@@ -131,21 +137,32 @@ export function getNgoColumns(onChanged: () => void): ColumnDef<NgoListItemWithS
     {
       id: "referred",
       header: "Referred",
+      meta: { card: "detail" } satisfies ResponsiveColumnMeta<NgoListItemWithStats>,
       cell: ({ row }) => <StatPill value={row.original.referred} />,
     },
     {
       id: "selected",
       header: "Selected",
+      meta: { card: "detail" } satisfies ResponsiveColumnMeta<NgoListItemWithStats>,
       cell: ({ row }) => <StatPill value={row.original.selected} />,
     },
     {
       id: "this_cycle",
       header: "This Cycle",
+      meta: {
+        card: "summary",
+        cardCell: (r) => (
+          <span className="inline-flex items-center gap-1.5">
+            <StatPill value={r.referredThisCycle} emphasis /> this cycle
+          </span>
+        ),
+      } satisfies ResponsiveColumnMeta<NgoListItemWithStats>,
       cell: ({ row }) => <StatPill value={row.original.referredThisCycle} emphasis />,
     },
     {
       id: "actions",
       header: "",
+      meta: { card: "actions", className: "w-px" } satisfies ResponsiveColumnMeta<NgoListItemWithStats>,
       cell: ({ row }) => (
         <RoleGate capability="managePartners">
           <DropdownMenu>
