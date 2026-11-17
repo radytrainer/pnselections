@@ -33,6 +33,8 @@ import {
 import { getNgoYearlyStats, type NgoYearlyStat } from "@/services/ngoService";
 import { CycleSelect } from "@/components/forms/CycleSelect";
 import { useCycleFilter } from "@/hooks/useCycleFilter";
+import { OfflineNotice } from "@/components/offline/OfflineNotice";
+import { useOfflineStatus } from "@/hooks/useOfflineStatus";
 import { cn } from "@/lib/utils";
 import { CARD_COLOR_STYLES, type CardColor } from "@/lib/cardColors";
 import { StudentDetailDrawer } from "@/components/dashboard/StudentDetailDrawer";
@@ -92,9 +94,11 @@ export default function DashboardPage() {
   // Defaults to the active cycle so one generation's numbers aren't mixed
   // with the next; "All Cycles" is still available for comparisons.
   const { cycles, cycleId, setCycleId, loading: cyclesLoading } = useCycleFilter();
+  const { online } = useOfflineStatus();
 
+  // Live numbers need the server: skip while offline, re-load on reconnect.
   useEffect(() => {
-    if (cyclesLoading) return;
+    if (cyclesLoading || !online) return;
     setLoading(true);
     const cycle = cycleId || undefined;
     // NGO yearly trends compare cycles by design, so they always cover every cycle.
@@ -108,7 +112,7 @@ export default function DashboardPage() {
       })
       .catch((error) => toast.error(error instanceof Error ? error.message : "Failed to load dashboard"))
       .finally(() => setLoading(false));
-  }, [cycleId, cyclesLoading]);
+  }, [cycleId, cyclesLoading, online]);
 
   // Gender counts — always absolute (unfiltered), used for the filter cards
   const genderCounts = useMemo(() => ({
@@ -157,6 +161,15 @@ export default function DashboardPage() {
       .map(([ngoName, studentCount]) => ({ ngoName, studentCount }))
       .sort((a, b) => b.studentCount - a.studentCount);
   }, [filtered]);
+
+  if (!online) {
+    return (
+      <div className="space-y-6">
+        <h1 className="text-2xl font-semibold">Executive Dashboard</h1>
+        <OfflineNotice message="The dashboard shows live numbers from the server, so it needs an internet connection. It will load automatically when you're back online." />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">

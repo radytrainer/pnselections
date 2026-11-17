@@ -49,3 +49,4 @@ storage-data/
 # database backups downloaded from Supabase (contain personal data)
 *.backup.gz
 *.backup
+*.pem

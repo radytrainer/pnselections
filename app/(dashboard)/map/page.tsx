@@ -17,6 +17,8 @@ import { MapLegend } from "@/components/map/MapLegend";
 import { MapTotals } from "@/components/map/MapTotals";
 import { CycleSelect } from "@/components/forms/CycleSelect";
 import { useCycleFilter } from "@/hooks/useCycleFilter";
+import { OfflineNotice } from "@/components/offline/OfflineNotice";
+import { useOfflineStatus } from "@/hooks/useOfflineStatus";
 import type { MapGenderFilter, MapLayerFilter } from "@/components/map/CambodiaMap";
 
 const CambodiaMap = dynamic(
@@ -69,8 +71,12 @@ export default function MapPage() {
 
   const { cycles, cycleId, setCycleId, loading: cyclesLoading } = useCycleFilter();
 
+  const { online } = useOfflineStatus();
+
+  // Map tiles and numbers come from the internet: skip while offline,
+  // re-load on reconnect.
   const loadMapData = useCallback(() => {
-    if (cyclesLoading) return;
+    if (cyclesLoading || !online) return;
     setLoading(true);
     return Promise.all([getProvinceStats(cycleId || undefined), getMapPartners()])
       .then(([provinceStats, partners]) => {
@@ -80,13 +86,22 @@ export default function MapPage() {
       })
       .catch((error) => toast.error(error instanceof Error ? error.message : "Failed to load map data"))
       .finally(() => setLoading(false));
-  }, [cycleId, cyclesLoading]);
+  }, [cycleId, cyclesLoading, online]);
 
   useEffect(() => {
     loadMapData();
   }, [loadMapData]);
 
   const totalStudents = useMemo(() => stats.reduce((sum, p) => sum + p.totalStudents, 0), [stats]);
+
+  if (!online) {
+    return (
+      <OfflineNotice
+        className="h-full"
+        message="The Cambodia map is drawn from online map tiles and live numbers, so it needs an internet connection. It will load automatically when you're back online."
+      />
+    );
+  }
 
   return (
     <div ref={containerRef} className="relative isolate h-full w-full overflow-hidden rounded-lg border bg-background">
