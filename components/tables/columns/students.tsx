@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { toast } from "sonner";
 import type { ColumnDef } from "@tanstack/react-table";
-import { Eye, Gavel, HeartHandshake, MoreHorizontal, Pencil, Send, Trash2 } from "lucide-react";
+import { Eye, FileDown, Gavel, HeartHandshake, MoreHorizontal, Pencil, Send, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import {
@@ -187,6 +187,13 @@ export function StudentActions({
           <DropdownMenuItem render={<Link href={`/committee/${s.id}`} />}>
             <Gavel className="size-4" />
             Committee
+          </DropdownMenuItem>
+        )}
+        {s.social_assessments.length > 0 && (
+          // New tab + ?print=1: the report opens the print dialog ("Save as PDF").
+          <DropdownMenuItem render={<a href={`/report/students/${s.id}?print=1`} target="_blank" rel="noopener" />}>
+            <FileDown className="size-4" />
+            Download report
           </DropdownMenuItem>
         )}
         {canEdit && (
