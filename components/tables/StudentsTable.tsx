@@ -265,7 +265,7 @@ export function StudentsTable({
           </label>
         )}
         {loading ? (
-          <ul className="grid gap-2 md:grid-cols-2">
+          <ul className="grid gap-2">
             {Array.from({ length: 6 }).map((_, i) => (
               <li key={i} className="flex items-center gap-3 rounded-xl border bg-card p-3">
                 <Skeleton className="size-10 rounded-full" />
@@ -277,7 +277,7 @@ export function StudentsTable({
             ))}
           </ul>
         ) : rows.length ? (
-          <ul className="grid items-start gap-2 md:grid-cols-2">
+          <ul className="grid gap-2">
             {rows.map((row) => (
               <StudentCard
                 key={row.id}
