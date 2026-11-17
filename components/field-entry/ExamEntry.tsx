@@ -10,7 +10,7 @@ import { ExamForm } from "@/components/forms/ExamForm";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { ExamFormValues } from "@/features/exam/schema";
 
-/** Shared by /students/[studentId]/exam (online) and /field/exam (Field Mode, works offline). */
+/** Exam score entry for /students/[studentId]/exam. Needs a connection (not part of offline Field Mode). */
 export function ExamEntry({ studentId, doneHref }: { studentId: string; doneHref: string }) {
   const router = useRouter();
   const [student, setStudent] = useState<StudentDetail | null>(null);

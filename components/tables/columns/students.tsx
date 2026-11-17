@@ -123,11 +123,14 @@ export function StudentActions({
   role,
   currentUserId,
   onChanged,
+  variant = "icons",
 }: {
   student: StudentListItem;
   role: AppRole | null;
   currentUserId: string | null;
   onChanged: () => void;
+  /** "icons": compact icon buttons (desktop table). "labeled": icon + text buttons with Edit shown, for cards on phones/tablets. */
+  variant?: "icons" | "labeled";
 }) {
   const canEdit = can(role, "createEditStudents");
   const fullName = `${s.first_name} ${s.last_name}`;
@@ -160,6 +163,76 @@ export function StudentActions({
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to delete student");
     }
+  }
+
+  const menu = (
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        render={
+          <Button variant="ghost" size="icon-sm" className="text-muted-foreground" aria-label={`More actions for ${fullName}`} />
+        }
+      >
+        <MoreHorizontal className="size-4" />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="min-w-44">
+        <DropdownMenuItem render={<Link href={`/students/${s.id}`} />}>
+          <Eye className="size-4" />
+          View profile
+        </DropdownMenuItem>
+        <DropdownMenuItem render={<Link href={`/students/${s.id}/social-form`} />}>
+          <HeartHandshake className="size-4" />
+          Social form
+        </DropdownMenuItem>
+        {committeeRelevant && (
+          <DropdownMenuItem render={<Link href={`/committee/${s.id}`} />}>
+            <Gavel className="size-4" />
+            Committee
+          </DropdownMenuItem>
+        )}
+        {canEdit && (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem render={<Link href={`/students/${s.id}/edit`} />}>
+              <Pencil className="size-4" />
+              Edit
+            </DropdownMenuItem>
+            <DropdownMenuItem variant="destructive" onClick={handleDelete}>
+              <Trash2 className="size-4" />
+              Delete
+            </DropdownMenuItem>
+          </>
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+
+  if (variant === "labeled") {
+    // One row, buttons share the width; labels truncate rather than wrap.
+    const btn = "h-8 min-w-0 flex-auto gap-1.5 px-2 sm:flex-none sm:px-2.5";
+    return (
+      <div className="flex items-center gap-1.5">
+        <Link
+          href={`/students/${s.id}/social-form`}
+          className={cn(buttonVariants({ variant: "outline", size: "sm" }), btn, "text-pink-700 dark:text-pink-300")}
+        >
+          <HeartHandshake className="size-4" />
+          <span className="truncate">Social form</span>
+        </Link>
+        {canSendThisOne && (
+          <Button type="button" variant="outline" size="sm" className={btn} onClick={handleSend}>
+            <Send className="size-4" />
+            <span className="truncate">Committee</span>
+          </Button>
+        )}
+        {canEdit && (
+          <Link href={`/students/${s.id}/edit`} className={cn(buttonVariants({ variant: "outline", size: "sm" }), btn)}>
+            <Pencil className="size-4" />
+            <span className="truncate">Edit</span>
+          </Link>
+        )}
+        <div className="shrink-0 sm:ml-auto">{menu}</div>
+      </div>
+    );
   }
 
   return (
@@ -196,44 +269,7 @@ export function StudentActions({
           <TooltipContent>Send to Committee</TooltipContent>
         </Tooltip>
       )}
-      <DropdownMenu>
-        <DropdownMenuTrigger
-          render={
-            <Button variant="ghost" size="icon-sm" className="text-muted-foreground" aria-label={`More actions for ${fullName}`} />
-          }
-        >
-          <MoreHorizontal className="size-4" />
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="min-w-44">
-          <DropdownMenuItem render={<Link href={`/students/${s.id}`} />}>
-            <Eye className="size-4" />
-            View profile
-          </DropdownMenuItem>
-          <DropdownMenuItem render={<Link href={`/students/${s.id}/social-form`} />}>
-            <HeartHandshake className="size-4" />
-            Social form
-          </DropdownMenuItem>
-          {committeeRelevant && (
-            <DropdownMenuItem render={<Link href={`/committee/${s.id}`} />}>
-              <Gavel className="size-4" />
-              Committee
-            </DropdownMenuItem>
-          )}
-          {canEdit && (
-            <>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem render={<Link href={`/students/${s.id}/edit`} />}>
-                <Pencil className="size-4" />
-                Edit
-              </DropdownMenuItem>
-              <DropdownMenuItem variant="destructive" onClick={handleDelete}>
-                <Trash2 className="size-4" />
-                Delete
-              </DropdownMenuItem>
-            </>
-          )}
-        </DropdownMenuContent>
-      </DropdownMenu>
+      {menu}
     </div>
   );
 }

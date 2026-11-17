@@ -22,7 +22,7 @@ type Bundle = {
 };
 
 /** Pages Field Mode can open without internet (their HTML + JS is cached by public/sw.js). */
-export const OFFLINE_PAGES = ["/field", "/field/social-form", "/field/exam", "/field/interview", "/students", "/offline"];
+export const OFFLINE_PAGES = ["/field", "/field/social-form", "/field/interview", "/students", "/offline"];
 
 /**
  * Downloads everything Field Mode needs and stores it under the exact URLs
@@ -48,7 +48,6 @@ export async function downloadForOffline(onProgress?: (message: string) => void,
     const latest = [...student.social_assessments].sort((a, b) => b.visit_number - a.visit_number)[0] ?? null;
     put(`/api/v1/students/${student.id}`, student);
     put(`/api/v1/social-assessments/student/${student.id}/latest`, latest);
-    put(`/api/v1/exams/${student.id}`, student.exam_results ?? null);
     put(`/api/v1/interviews/student/${student.id}`, student.interviews ?? null);
     if (student.interviews) {
       put(`/api/v1/interviews/${student.interviews.id}/answers`, bundle.interviewAnswers[student.interviews.id] ?? []);

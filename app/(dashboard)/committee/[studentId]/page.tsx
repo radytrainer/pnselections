@@ -44,6 +44,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { CommitteeRatingPanel } from "@/components/committee/CommitteeRatingPanel";
 import { RatingAverageChart } from "@/components/committee/RatingAverageChart";
 import { SocialFormSummary } from "@/components/committee/SocialFormSummary";
+import { SocialFormPresentation } from "@/components/committee/SocialFormPresentation";
 import {
   CATEGORY_BADGE_CLASSES,
   CATEGORY_LABELS,
@@ -323,8 +324,25 @@ export default function CommitteeDossierPage() {
                 <p className="text-sm text-muted-foreground">No social form yet.</p>
               ) : (
                 student.social_assessments.map((assessment, i) => (
-                  <div key={assessment.id}>
+                  <div key={assessment.id} className="space-y-3">
                     {i > 0 && <div className="mb-6 border-t" />}
+                    <div className="flex justify-end">
+                      <SocialFormPresentation
+                        assessment={assessment}
+                        student={{
+                          name: `${student.first_name} ${student.last_name}`,
+                          code: student.student_code,
+                          photoPath,
+                          initials,
+                          facts: [
+                            GENDER_LABELS[student.gender] ?? student.gender,
+                            displayAge != null ? `${displayAge} years old` : "",
+                            student.provinces?.name_en ?? "",
+                            student.school_partners?.school_name ?? "",
+                          ].filter(Boolean),
+                        }}
+                      />
+                    </div>
                     <SocialFormSummary assessment={assessment} />
                   </div>
                 ))

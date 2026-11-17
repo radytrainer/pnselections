@@ -44,10 +44,50 @@ import {
   WATER_ACCESS_OPTS,
   labelFor,
 } from "@/features/social-form/labels";
+import {
+  DEBT_POINTS,
+  DEPENDENTS_POINTS,
+  EDUCATION_SUPPORT_POINTS,
+  ELECTRICITY_ACCESS_POINTS,
+  EXPENSES_POINTS,
+  HOUSEHOLD_SIZE_POINTS,
+  HOUSE_STATUS_POINTS,
+  HOUSING_TYPE_POINTS,
+  HUSBANDRY_POINTS,
+  INCOME_CONTRIBUTION_POINTS,
+  INCOME_POINTS,
+  LAND_POINTS,
+  PARENT_OCCUPATION_POINTS,
+  SCHOOL_ATTENDANCE_POINTS,
+  WATER_ACCESS_POINTS,
+} from "@/features/social-form/scoring";
 import type { SocialAssessmentRow } from "@/services/committeeService";
 import { cn } from "@/lib/utils";
 
-type Row = { label: string; value: string };
+/**
+ * How much this answer points to need, from the scoring rubric (higher points
+ * = better-off, see scoring.ts): fewest points = "high", most = "low".
+ * Only set where the rubric gives a clear direction — Health and Academic
+ * points don't map to need that way, so they stay neutral.
+ */
+export type Need = "high" | "medium" | "low";
+export type Row = { label: string; value: string; need?: Need };
+
+function needFrom<K extends string>(points: Record<K, number>, key: K | null | undefined): Need | undefined {
+  if (key == null) return undefined;
+  const p = points[key];
+  if (p == null) return undefined;
+  const values = Object.values(points) as number[];
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  if (max === min) return undefined;
+  const t = (p - min) / (max - min);
+  return t <= 0.34 ? "high" : t >= 0.67 ? "low" : "medium";
+}
+
+/** Household assets use a 0–3 rank (None … Many/modern). */
+const ASSET_POINTS = { 0: 0, 1: 1, 2: 2, 3: 3 } as Record<string, number>;
+const assetNeed = (rank: number | null | undefined) => (rank == null ? undefined : needFrom(ASSET_POINTS, String(rank)));
 
 function section(title: string, icon: LucideIcon, rows: Row[]) {
   return { title, icon, rows: rows.filter((r) => r.value) };
@@ -55,11 +95,17 @@ function section(title: string, icon: LucideIcon, rows: Row[]) {
 
 /** The note is a free-text override ("Specify...") of the selected band, not
  * a comment alongside it — show the note alone when set, the band otherwise. */
+/** "Age 40 · Farmer · Income 250 · Primary school" — labels the bare numbers. */
+function parentLine(age: number | null | undefined, job: string | null | undefined, income: string | null | undefined, education: string | null | undefined) {
+  return [age != null ? `Age ${age}` : "", job ?? "", income ? `Income ${income}` : "", education ?? ""].filter(Boolean).join(" · ");
+}
+
 function noteOrLabel(label: string | null | undefined, note: string | null | undefined) {
   return note?.trim() ? note : (label ?? "");
 }
 
-function buildSections(a: SocialAssessmentRow) {
+/** The Social Form sections (label/value rows), shared with the full-screen presentation. */
+export function buildSections(a: SocialAssessmentRow) {
   return [
     section("Health & Academic", HeartPulse, [
       { label: "Age", value: a.age?.toString() ?? "" },
@@ -82,60 +128,60 @@ function buildSections(a: SocialAssessmentRow) {
       { label: "OK to Join Training", value: a.ok_to_join_training ?? "" },
     ]),
     section("Household & Family", Users, [
-      { label: "Household Size", value: labelFor(HOUSEHOLD_SIZE_OPTS, a.household_size_band) ?? "" },
-      { label: "Dependents", value: labelFor(DEPENDENTS_OPTS, a.dependents_band) ?? "" },
+      { label: "Household Size", value: labelFor(HOUSEHOLD_SIZE_OPTS, a.household_size_band) ?? "", need: needFrom(HOUSEHOLD_SIZE_POINTS, a.household_size_band) },
+      { label: "Dependents", value: labelFor(DEPENDENTS_OPTS, a.dependents_band) ?? "", need: needFrom(DEPENDENTS_POINTS, a.dependents_band) },
       { label: "Children Studying", value: a.school_aged_children_studying?.toString() ?? "" },
       { label: "Children Working", value: a.school_aged_children_working?.toString() ?? "" },
-      { label: "School Attendance", value: labelFor(SCHOOL_ATTENDANCE_OPTS, a.school_attendance_band) ?? "" },
-      { label: "Parent Occupation", value: labelFor(PARENT_OCCUPATION_OPTS, a.parent_occupation_band) ?? "" },
+      { label: "School Attendance", value: labelFor(SCHOOL_ATTENDANCE_OPTS, a.school_attendance_band) ?? "", need: needFrom(SCHOOL_ATTENDANCE_POINTS, a.school_attendance_band) },
+      { label: "Parent Occupation", value: labelFor(PARENT_OCCUPATION_OPTS, a.parent_occupation_band) ?? "", need: needFrom(PARENT_OCCUPATION_POINTS, a.parent_occupation_band) },
       {
         label: "Father",
-        value: [a.father_age, a.father_job, a.father_income, labelFor(PARENT_EDUCATION_OPTS, a.father_education_band)]
-          .filter(Boolean)
-          .join(" · "),
+        value: parentLine(a.father_age, a.father_job, a.father_income, labelFor(PARENT_EDUCATION_OPTS, a.father_education_band)),
       },
       {
         label: "Mother",
-        value: [a.mother_age, a.mother_job, a.mother_income, labelFor(PARENT_EDUCATION_OPTS, a.mother_education_band)]
-          .filter(Boolean)
-          .join(" · "),
+        value: parentLine(a.mother_age, a.mother_job, a.mother_income, labelFor(PARENT_EDUCATION_OPTS, a.mother_education_band)),
       },
       {
         label: "Children's Income",
-        value: [a.child1_income, a.child2_income, a.child3_income].filter(Boolean).join(" · "),
+        value: [a.child1_income, a.child2_income, a.child3_income]
+          .map((v, i) => (v ? `Child ${i + 1}: ${v}` : ""))
+          .filter(Boolean)
+          .join(" · "),
       },
     ]),
     section("Housing & Utilities", HomeIcon, [
       { label: "House Owner", value: a.house_owner ?? "" },
-      { label: "Housing Type", value: labelFor(HOUSING_TYPE_OPTS, a.housing_type_band) ?? "" },
-      { label: "House Status", value: labelFor(HOUSE_STATUS_OPTS, a.house_status_band) ?? "" },
-      { label: "Water Access", value: labelFor(WATER_ACCESS_OPTS, a.water_access_band) ?? "" },
-      { label: "Electricity", value: labelFor(ELECTRICITY_OPTS, a.electricity_access_band) ?? "" },
+      { label: "Housing Type", value: labelFor(HOUSING_TYPE_OPTS, a.housing_type_band) ?? "", need: needFrom(HOUSING_TYPE_POINTS, a.housing_type_band) },
+      { label: "House Status", value: labelFor(HOUSE_STATUS_OPTS, a.house_status_band) ?? "", need: needFrom(HOUSE_STATUS_POINTS, a.house_status_band) },
+      { label: "Water Access", value: labelFor(WATER_ACCESS_OPTS, a.water_access_band) ?? "", need: needFrom(WATER_ACCESS_POINTS, a.water_access_band) },
+      { label: "Electricity", value: labelFor(ELECTRICITY_OPTS, a.electricity_access_band) ?? "", need: needFrom(ELECTRICITY_ACCESS_POINTS, a.electricity_access_band) },
     ]),
     section("Household Assets", Package, [
-      { label: "Furniture", value: ASSET_RANK_LABELS[a.assets_furniture ?? 0] ?? "" },
-      { label: "Transport", value: ASSET_RANK_LABELS[a.assets_transport ?? 0] ?? "" },
-      { label: "Electronics", value: ASSET_RANK_LABELS[a.assets_electronics ?? 0] ?? "" },
-      { label: "Livestock", value: ASSET_RANK_LABELS[a.assets_livestock ?? 0] ?? "" },
+      { label: "Furniture", value: ASSET_RANK_LABELS[a.assets_furniture ?? 0] ?? "", need: assetNeed(a.assets_furniture) },
+      { label: "Transport", value: ASSET_RANK_LABELS[a.assets_transport ?? 0] ?? "", need: assetNeed(a.assets_transport) },
+      { label: "Electronics", value: ASSET_RANK_LABELS[a.assets_electronics ?? 0] ?? "", need: assetNeed(a.assets_electronics) },
+      { label: "Livestock", value: ASSET_RANK_LABELS[a.assets_livestock ?? 0] ?? "", need: assetNeed(a.assets_livestock) },
     ]),
     section("Income & Expenses", Wallet, [
-      { label: "Monthly Income", value: noteOrLabel(labelFor(INCOME_OPTS, a.income_band), a.income_note) },
-      { label: "Monthly Expenses", value: noteOrLabel(labelFor(EXPENSES_OPTS, a.expenses_band), a.expenses_note) },
+      { label: "Monthly Income", value: noteOrLabel(labelFor(INCOME_OPTS, a.income_band), a.income_note), need: needFrom(INCOME_POINTS, a.income_band) },
+      { label: "Monthly Expenses", value: noteOrLabel(labelFor(EXPENSES_OPTS, a.expenses_band), a.expenses_note), need: needFrom(EXPENSES_POINTS, a.expenses_band) },
       {
         label: "Can Support Education",
         value: noteOrLabel(labelFor(EDUCATION_SUPPORT_OPTS, a.education_support_band), a.education_support_note),
+        need: needFrom(EDUCATION_SUPPORT_POINTS, a.education_support_band),
       },
     ]),
     section("Debt", CreditCard, [
-      { label: "Debt Status", value: [labelFor(DEBT_OPTS, a.debt_band), a.debt_amount].filter(Boolean).join(" — ") },
+      { label: "Debt Status", value: [labelFor(DEBT_OPTS, a.debt_band), a.debt_amount].filter(Boolean).join(" — "), need: needFrom(DEBT_POINTS, a.debt_band) },
       { label: "Reason for Debt", value: a.debt_note ?? "" },
     ]),
     section("Farming, Plantation & Husbandry", Wheat, [
-      { label: "Farm Land", value: [labelFor(LAND_OPTS, a.farm_land_band), a.farm_land_note].filter(Boolean).join(" — ") },
-      { label: "Farm Income", value: labelFor(INCOME_CONTRIBUTION_OPTS, a.farm_income_band) ?? "" },
-      { label: "Plantation Land", value: labelFor(LAND_OPTS, a.plantation_land_band) ?? "" },
-      { label: "Plantation Income", value: labelFor(INCOME_CONTRIBUTION_OPTS, a.plantation_income_band) ?? "" },
-      { label: "Husbandry", value: [labelFor(HUSBANDRY_OPTS, a.husbandry_band), a.husbandry_note].filter(Boolean).join(" — ") },
+      { label: "Farm Land", value: [labelFor(LAND_OPTS, a.farm_land_band), a.farm_land_note].filter(Boolean).join(" — "), need: needFrom(LAND_POINTS, a.farm_land_band) },
+      { label: "Farm Income", value: labelFor(INCOME_CONTRIBUTION_OPTS, a.farm_income_band) ?? "", need: needFrom(INCOME_CONTRIBUTION_POINTS, a.farm_income_band) },
+      { label: "Plantation Land", value: labelFor(LAND_OPTS, a.plantation_land_band) ?? "", need: needFrom(LAND_POINTS, a.plantation_land_band) },
+      { label: "Plantation Income", value: labelFor(INCOME_CONTRIBUTION_OPTS, a.plantation_income_band) ?? "", need: needFrom(INCOME_CONTRIBUTION_POINTS, a.plantation_income_band) },
+      { label: "Husbandry", value: [labelFor(HUSBANDRY_OPTS, a.husbandry_band), a.husbandry_note].filter(Boolean).join(" — "), need: needFrom(HUSBANDRY_POINTS, a.husbandry_band) },
     ]),
     section("Vulnerability Factors", ShieldAlert, [
       {
@@ -143,6 +189,7 @@ function buildSections(a: SocialAssessmentRow) {
         value: VULNERABILITY_OPTS.filter((v) => a[v.name as keyof SocialAssessmentRow])
           .map((v) => v.label)
           .join(", "),
+        need: "high",
       },
       { label: "Score Deduction", value: a.vulnerability_deduction ? `−${a.vulnerability_deduction}` : "" },
       { label: "Notes", value: a.vulnerability_note ?? "" },
@@ -150,15 +197,23 @@ function buildSections(a: SocialAssessmentRow) {
   ];
 }
 
+/** Vulnerability Assessment Checklist rows + tier, shared with the presentation. */
+export function buildVac(a: SocialAssessmentRow) {
+  const VAC_NEED: Record<number, Need> = { 1: "high", 2: "medium", 3: "low" };
+  const rows: Row[] = VAC_CATEGORIES.map((c) => ({
+    label: c.label,
+    value: c.options.find((o) => o.value === a[c.field])?.label ?? "",
+    need: a[c.field] != null ? VAC_NEED[a[c.field] as number] : undefined,
+  })).filter((r) => r.value);
+  const tier = a.vac_total_score != null ? vacTierFor(a.vac_total_score) : null;
+  return { rows, tier, answered: rows.length, total: VAC_CATEGORIES.length };
+}
+
 export function SocialFormSummary({ assessment }: { assessment: SocialAssessmentRow }) {
   const sections = buildSections(assessment);
   const category = assessment.category as SocialFormCategory;
   const failedHomeVisit = isFailedHomeVisit(assessment.final_score ?? 0, assessment.manual_failed);
-  const vacRows = VAC_CATEGORIES.map((c) => ({
-    label: c.label,
-    value: c.options.find((o) => o.value === assessment[c.field])?.label ?? "",
-  })).filter((r) => r.value);
-  const vacTier = assessment.vac_total_score != null ? vacTierFor(assessment.vac_total_score) : null;
+  const { rows: vacRows, tier: vacTier } = buildVac(assessment);
 
   return (
     <div className="space-y-4">

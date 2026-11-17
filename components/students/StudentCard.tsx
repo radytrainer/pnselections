@@ -95,7 +95,7 @@ export function StudentCard({
       </div>
 
       {open && (
-        <div id={detailsId} className="border-t px-3 pt-3 pb-2">
+        <div id={detailsId} className="border-t px-3 pt-3 pb-1">
           <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm sm:grid-cols-3">
             <Detail label="Gender">{GENDER_LABEL[s.gender] ?? s.gender}</Detail>
             <Detail label="Province">{province ?? <Empty />}</Detail>
@@ -106,14 +106,19 @@ export function StudentCard({
             </Detail>
             <Detail label="NGO">{ngo ?? <Empty />}</Detail>
           </dl>
-          <div className="mt-3 flex items-center justify-between gap-2 border-t pt-2">
-            <Link href={`/students/${s.id}`} className={cn(buttonVariants({ variant: "outline", size: "sm" }))}>
-              View profile
-            </Link>
-            <StudentActions student={s} role={role} currentUserId={currentUserId} onChanged={onChanged} />
-          </div>
+          <Link
+            href={`/students/${s.id}`}
+            className={cn(buttonVariants({ variant: "link", size: "sm" }), "mt-2 h-auto px-0")}
+          >
+            View full profile →
+          </Link>
         </div>
       )}
+
+      {/* Always visible: the actions field teams use most */}
+      <div className="border-t px-3 py-2">
+        <StudentActions student={s} role={role} currentUserId={currentUserId} onChanged={onChanged} variant="labeled" />
+      </div>
     </li>
   );
 }

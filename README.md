@@ -49,10 +49,10 @@ docker compose exec postgres psql -U postgres scholarship
 
 ## Field Mode (offline)
 
-Home-visit, exam and interview teams can work without internet:
+Home-visit and interview teams can work without internet (exam scores need a connection):
 
 1. **While online:** sign in, open **Field Mode (Offline)** in the sidebar, and press **Download for offline**. This saves this cycle's students, the form questions and the app itself on the device.
-2. **In the field:** open Field Mode and pick a student. The **social form**, **exam** and **interview** forms, plus eliminate/undo elimination, save to the device.
+2. **In the field:** open Field Mode and pick a student. The **social form** and **interview** forms, plus eliminate/undo elimination, save to the device.
 3. **Back online:** changes sync automatically. A chip in the top bar shows how many are waiting, and any that the server rejected can be retried or discarded there.
 
 How it works:

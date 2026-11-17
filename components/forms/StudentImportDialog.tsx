@@ -346,9 +346,10 @@ export function StudentImportDialog({ onImported }: { onImported: () => void }) 
 
   return (
     <>
-      <Button variant="outline" onClick={() => setOpen(true)}>
+      <Button variant="outline" onClick={() => setOpen(true)} aria-label="Import from Excel" title="Import from Excel">
         <Upload className="size-4" />
-        Import from Excel
+        {/* Icon only on phones; full label from tablet up. */}
+        <span className="hidden sm:inline">Import from Excel</span>
       </Button>
       <Dialog
         open={open}

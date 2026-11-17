@@ -17,7 +17,7 @@ import { getSignedStudentDocumentUrls, pickLatestPhotoPath } from "@/lib/storage
 import { StudentsTable } from "@/components/tables/StudentsTable";
 import { StudentImportDialog } from "@/components/forms/StudentImportDialog";
 import { CycleSelect } from "@/components/forms/CycleSelect";
-import { Plus, Search, Trash2, X } from "lucide-react";
+import { Plus, Search, SlidersHorizontal, Trash2, X } from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
@@ -132,6 +132,9 @@ export default function StudentsPage() {
   }, []);
 
   const activeFilterCount = [search, status, homeVisitor, provinceId, ngoName].filter(Boolean).length;
+  /** Dropdown filters only (not the search box) — the badge on the phone/tablet Filters button. */
+  const dropdownFilterCount = [status, homeVisitor, provinceId, ngoName].filter(Boolean).length;
+  const [filtersOpen, setFiltersOpen] = useState(false);
 
   function clearFilters() {
     setPage(1);
@@ -222,12 +225,12 @@ export default function StudentsPage() {
       .catch(() => {});
   }, [restored, cyclesLoading, search, status, homeVisitor, provinceId, ngoIds, cycleId]);
 
-  const selectTriggerClass = "w-full sm:w-44";
+  const selectTriggerClass = "w-full lg:w-44";
 
   return (
     <div className="space-y-5">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div className="space-y-1">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0 space-y-1">
           <h1 className="text-2xl font-semibold tracking-tight">Students</h1>
           <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
             {genderCounts ? (
@@ -257,8 +260,9 @@ export default function StudentsPage() {
           </p>
         </div>
         <RoleGate capability="createEditStudents">
-          <div className="flex flex-wrap items-center gap-2">
-            <CycleSelect
+          <div className="flex shrink-0 items-center gap-2">
+            <div className="hidden lg:block">
+              <CycleSelect
               cycles={cycles}
               value={cycleId}
               allowAll
@@ -269,6 +273,7 @@ export default function StudentsPage() {
                 setCycleId(value);
               }}
             />
+            </div>
             <StudentImportDialog onImported={fetchStudents} />
             <RoleGate capability="viewTrash">
               <Tooltip>
@@ -286,21 +291,23 @@ export default function StudentsPage() {
                 <TooltipContent>Deleted students</TooltipContent>
               </Tooltip>
             </RoleGate>
-            <Link href="/students/new" className={buttonVariants()}>
+            <Link href="/students/new" className={buttonVariants()} aria-label="New student">
               <Plus />
-              New Student
+              <span className="sm:hidden">New</span>
+              <span className="hidden sm:inline">New Student</span>
             </Link>
           </div>
         </RoleGate>
       </div>
 
       <div className="flex flex-col gap-2 lg:flex-row lg:items-center">
-        <div className="relative w-full lg:max-w-sm">
+        <div className="flex items-center gap-2 lg:contents">
+        <div className="relative w-full min-w-0 flex-1 lg:max-w-sm lg:flex-none">
           <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             ref={searchRef}
             type="search"
-            placeholder="Search by name or student code"
+            placeholder="Search name or code"
             aria-label="Search students"
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
@@ -327,8 +334,46 @@ export default function StudentsPage() {
             </kbd>
           )}
         </div>
+        <Button
+          type="button"
+          variant="outline"
+          className={cn("h-9 shrink-0 lg:hidden", (filtersOpen || dropdownFilterCount > 0) && "border-primary/40 bg-primary/5")}
+          onClick={() => setFiltersOpen((o) => !o)}
+          aria-expanded={filtersOpen}
+          aria-controls="student-filters"
+        >
+          <SlidersHorizontal />
+          Filters
+          {dropdownFilterCount > 0 && (
+            <span className="flex size-5 items-center justify-center rounded-full bg-primary text-[11px] font-medium text-primary-foreground tabular-nums">
+              {dropdownFilterCount}
+            </span>
+          )}
+        </Button>
+        </div>
 
-        <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center">
+        <div
+          id="student-filters"
+          className={cn(
+            "grid grid-cols-2 gap-2 rounded-xl border bg-card p-3 sm:grid-cols-3 lg:flex lg:flex-wrap lg:items-center lg:rounded-none lg:border-0 lg:bg-transparent lg:p-0",
+            !filtersOpen && "hidden lg:flex",
+          )}
+        >
+          <RoleGate capability="createEditStudents">
+            <div className="col-span-2 sm:col-span-1 lg:hidden">
+              <CycleSelect
+              cycles={cycles}
+              value={cycleId}
+              allowAll
+              className="w-full"
+              onChange={(value) => {
+                setPage(1);
+                setHomeVisitor("");
+                setCycleId(value);
+              }}
+            />
+            </div>
+          </RoleGate>
           <Select
             value={status}
             onValueChange={(value) => {
@@ -419,7 +464,7 @@ export default function StudentsPage() {
             </SelectContent>
           </Select>
           {activeFilterCount > 0 && (
-            <Button variant="ghost" size="sm" className="text-muted-foreground" onClick={clearFilters}>
+            <Button variant="ghost" size="sm" className="col-span-2 justify-self-start text-muted-foreground sm:col-span-1" onClick={clearFilters}>
               <X />
               Clear filters
             </Button>

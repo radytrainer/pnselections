@@ -3,11 +3,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
-import { CloudDownload, CloudOff, ClipboardList, Loader2, MessageSquare, PencilLine, Search, Wifi } from "lucide-react";
+import { CloudDownload, CloudOff, ClipboardList, Loader2, MessageSquare, Search, Wifi } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useAuth } from "@/hooks/useAuth";
 import { useOfflineStatus } from "@/hooks/useOfflineStatus";
 import { useRole } from "@/hooks/useRole";
@@ -19,10 +20,15 @@ import { can } from "@/lib/rbac";
 import { cn } from "@/lib/utils";
 
 const PAGE_SIZE = 50;
+/** Select value for students with no province set. */
+const NO_PROVINCE = "__none__";
+
+const provinceOf = (s: OfflineStudent) => (s.provinces as { name_en?: string } | null)?.name_en ?? "";
 
 /**
- * Field Mode: the offline entry point for home-visit, exam and interview
- * teams. Download while online, then fill forms without internet; changes
+ * Field Mode: the offline entry point for home-visit and interview teams.
+ * (Exam scores need a connection — they're entered on the student's page.)
+ * Download while online, then fill forms without internet; changes
  * are kept on the device and synced automatically when the connection
  * returns (see lib/offline/).
  */
@@ -35,6 +41,7 @@ export default function FieldModePage() {
   const [loaded, setLoaded] = useState(false);
   const [downloading, setDownloading] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  const [province, setProvince] = useState("");
   const [limit, setLimit] = useState(PAGE_SIZE);
 
   const load = useCallback(async () => {
@@ -71,17 +78,32 @@ export default function FieldModePage() {
     return map;
   }, [pending, failed]);
 
+  // Provinces present in the downloaded students (works offline — no lookup needed), with counts.
+  const provinceOptions = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const s of students) {
+      const name = provinceOf(s) || NO_PROVINCE;
+      counts.set(name, (counts.get(name) ?? 0) + 1);
+    }
+    return Array.from(counts.entries())
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => (a.name === NO_PROVINCE ? 1 : b.name === NO_PROVINCE ? -1 : a.name.localeCompare(b.name)));
+  }, [students]);
+
   const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return students;
+    const q = search.trim().replace(/\s+/g, " ").toLowerCase();
     return students.filter((s) => {
-      const province = (s.provinces as { name_en?: string } | null)?.name_en ?? "";
-      return `${s.first_name} ${s.last_name} ${s.student_code} ${province}`.toLowerCase().includes(q);
+      const p = provinceOf(s);
+      if (province && (province === NO_PROVINCE ? p !== "" : p !== province)) return false;
+      if (!q) return true;
+      // Full name either way round, code, or province.
+      return `${s.first_name} ${s.last_name}\n${s.last_name} ${s.first_name}\n${s.student_code}\n${p}`
+        .toLowerCase()
+        .includes(q);
     });
-  }, [students, search]);
+  }, [students, search, province]);
 
   const canSocial = can(role, "enterHomeVisitData");
-  const canExam = can(role, "enterExamScores");
   const canInterview = can(role, "enterInterviewScores");
   const downloadedAt = info ? new Date(info.downloadedAt) : null;
   const stale = downloadedAt ? Date.now() - downloadedAt.getTime() > 3 * 24 * 60 * 60 * 1000 : false;
@@ -91,7 +113,7 @@ export default function FieldModePage() {
       <div>
         <h1 className="text-2xl font-semibold">Field Mode</h1>
         <p className="text-sm text-muted-foreground">
-          Fill home-visit, exam and interview forms without internet. Changes are saved on this device and sync
+          Fill social forms and interviews without internet. Changes are saved on this device and sync
           automatically when you&apos;re back online.
         </p>
       </div>
@@ -132,24 +154,54 @@ export default function FieldModePage() {
 
       {students.length > 0 && (
         <div className="space-y-3">
-          <div className="relative max-w-sm">
-            <Search className="absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              className="pl-8"
-              placeholder="Search name, code or province"
-              value={search}
-              onChange={(e) => {
-                setSearch(e.target.value);
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <div className="relative w-full sm:max-w-sm">
+              <Search className="absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                className="pl-8"
+                placeholder="Search name or code"
+                value={search}
+                onChange={(e) => {
+                  setSearch(e.target.value);
+                  setLimit(PAGE_SIZE);
+                }}
+              />
+            </div>
+            <Select
+              value={province}
+              onValueChange={(value) => {
+                setProvince(value ?? "");
                 setLimit(PAGE_SIZE);
               }}
-            />
+            >
+              <SelectTrigger className={cn("w-full sm:w-56", province && "border-primary/40 bg-primary/5")} aria-label="Filter by province">
+                <SelectValue placeholder="All provinces">
+                  {(value: string) =>
+                    !value ? "All provinces" : value === NO_PROVINCE ? "No province" : value
+                  }
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="">All provinces ({students.length})</SelectItem>
+                {provinceOptions.map((p) => (
+                  <SelectItem key={p.name} value={p.name}>
+                    {p.name === NO_PROVINCE ? "No province" : p.name} ({p.count})
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {(search || province) && (
+              <span className="text-sm text-muted-foreground sm:ml-1">
+                {filtered.length} of {students.length}
+              </span>
+            )}
           </div>
 
           <ul className="divide-y rounded-lg border">
             {filtered.slice(0, limit).map((s) => {
               const status = displayStudentStatus(s.status as StudentStatus, (s.elimination_reason as string | null) ?? null);
               const waiting = pendingByStudent.get(s.id);
-              const province = (s.provinces as { name_en?: string } | null)?.name_en;
+              const rowProvince = provinceOf(s);
               return (
                 <li key={s.id} className="flex flex-wrap items-center justify-between gap-3 p-3">
                   <div className="min-w-0">
@@ -168,18 +220,13 @@ export default function FieldModePage() {
                     </div>
                     <div className="text-xs text-muted-foreground">
                       {s.student_code}
-                      {province ? ` · ${province}` : ""}
+                      {rowProvince ? ` · ${rowProvince}` : ""}
                     </div>
                   </div>
                   <div className="flex flex-wrap gap-1.5">
                     {canSocial && (
                       <Link href={`/field/social-form?studentId=${s.id}`} className={buttonVariants({ size: "sm", variant: "outline" })}>
                         <ClipboardList className="size-3.5" /> Social form
-                      </Link>
-                    )}
-                    {canExam && (
-                      <Link href={`/field/exam?studentId=${s.id}`} className={buttonVariants({ size: "sm", variant: "outline" })}>
-                        <PencilLine className="size-3.5" /> Exam
                       </Link>
                     )}
                     {canInterview && (

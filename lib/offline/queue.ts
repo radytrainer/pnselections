@@ -66,31 +66,6 @@ const RULES: Rule[] = [
     },
   },
   {
-    kind: "Exam scores",
-    method: "PUT",
-    pattern: /^\/api\/v1\/exams\/([0-9a-f-]{36})$/,
-    studentId: (m) => m[1],
-    apply: async (studentId, body, url) => {
-      const examKey = url(`/api/v1/exams/${studentId}`);
-      const existing = ((await getCachedResponse(examKey)) as Json | null | undefined) ?? {};
-      const scores = {
-        math_score: body.mathScore,
-        english_score: body.englishScore,
-        logic_score: body.logicScore,
-        computer_score: body.computerScore,
-      };
-      const total = Object.values(scores).reduce<number>((sum, v) => sum + Number(v ?? 0), 0);
-      const exam = { ...existing, ...scores, total_score: total, student_id: studentId, cycle_id: body.cycleId };
-      await cacheResponse(examKey, exam);
-      await patchStudent(url, studentId, (s) => ({
-        ...s,
-        ...(body.nextStatus ? { status: String(body.nextStatus) } : {}),
-        exam_results: exam,
-      }));
-      return { ok: true, queued: true };
-    },
-  },
-  {
     kind: "Interview",
     method: "PUT",
     pattern: /^\/api\/v1\/interviews\/student\/([0-9a-f-]{36})$/,
