@@ -47,11 +47,6 @@ export function computeGrade(total: number, maxScore: number): "A1" | "A2" | "no
   return "not_recommended";
 }
 
-/** Single source of truth for the "passed interview" banner — kept in lockstep with computeGrade's A2 cutoff so the two can't disagree. */
-export function hasPassed(total: number, maxScore: number): boolean {
-  return maxScore > 0 && total / maxScore >= 0.5;
-}
-
 /**
  * What staff see after an interview: just Passed or Failed. The stored
  * `recommendation` keeps its A1/A2/not_recommended value (A1 and A2 = passed),

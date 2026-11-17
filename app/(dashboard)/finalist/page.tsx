@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import * as XLSX from "xlsx";
+import type { WorkSheet } from "xlsx";
 import { toast } from "sonner";
 import { AlertTriangle, Award, BarChart3, Clock, Download, Undo2 } from "lucide-react";
 import { listFinalists, type StudentListItem } from "@/services/studentService";
@@ -46,7 +46,10 @@ const EXPORT_COLUMN_WIDTHS = [
   { wch: 20 },
 ];
 
-function buildExportSheet(data: StudentListItem[]) {
+// Loaded on demand: xlsx is large and only needed when importing/exporting.
+const loadXlsx = () => import("xlsx");
+
+function buildExportSheet(XLSX: typeof import("xlsx"), data: StudentListItem[]): WorkSheet {
   const rows = data.map((student) => [
     student.student_code,
     `${student.first_name} ${student.last_name}`,
@@ -63,10 +66,11 @@ function buildExportSheet(data: StudentListItem[]) {
   return sheet;
 }
 
-function exportFinalistsToExcel(selected: StudentListItem[], waitlisted: StudentListItem[]) {
+async function exportFinalistsToExcel(selected: StudentListItem[], waitlisted: StudentListItem[]) {
+  const XLSX = await loadXlsx();
   const workbook = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(workbook, buildExportSheet(selected), "Main List");
-  XLSX.utils.book_append_sheet(workbook, buildExportSheet(waitlisted), "Waiting List");
+  XLSX.utils.book_append_sheet(workbook, buildExportSheet(XLSX, selected), "Main List");
+  XLSX.utils.book_append_sheet(workbook, buildExportSheet(XLSX, waitlisted), "Waiting List");
   XLSX.writeFile(workbook, `finalists-${new Date().toISOString().slice(0, 10)}.xlsx`);
 }
 

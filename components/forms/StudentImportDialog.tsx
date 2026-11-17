@@ -1,7 +1,6 @@
 "use client";
 
 import { useRef, useState } from "react";
-import * as XLSX from "xlsx";
 import { toast } from "sonner";
 import { createStudent, generateStudentCode } from "@/services/studentService";
 import { getActiveCycle, listProvinces, listSchools } from "@/services/lookupService";
@@ -128,6 +127,9 @@ function normalizeFlag(raw: string): boolean {
   return v === "1" || v === "true" || v === "yes" || v === "y";
 }
 
+// Loaded on demand: xlsx is large and only needed when importing/exporting.
+const loadXlsx = () => import("xlsx");
+
 function normalizeDob(raw: string): string | null {
   // Date cells come through already as full ISO strings (converted from JS
   // Date objects upstream, since cellDates: true is set on XLSX.read).
@@ -146,7 +148,8 @@ export function StudentImportDialog({ onImported }: { onImported: () => void }) 
   const [results, setResults] = useState<ImportResult[] | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  function downloadTemplate() {
+  async function downloadTemplate() {
+    const XLSX = await loadXlsx();
     const sheet = XLSX.utils.aoa_to_sheet([TEMPLATE_HEADERS, TEMPLATE_EXAMPLE]);
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, sheet, "Students");
@@ -156,7 +159,7 @@ export function StudentImportDialog({ onImported }: { onImported: () => void }) 
   async function handleFile(file: File) {
     setFileName(file.name);
     setResults(null);
-    const buffer = await file.arrayBuffer();
+    const [buffer, XLSX] = await Promise.all([file.arrayBuffer(), loadXlsx()]);
     const workbook = XLSX.read(buffer, { cellDates: true });
     const sheet = workbook.Sheets[workbook.SheetNames[0]];
     const raw = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: "" });

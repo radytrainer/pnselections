@@ -21,10 +21,6 @@ export type SchoolDetail = School & {
   provinces: { name_en: string } | null;
 };
 
-export async function listSchoolPartners() {
-  return api.get<SchoolListItem[]>("/api/v1/schools");
-}
-
 /** School list with referred/selected/this-cycle counts, aggregated client-side
  * from one students query (avoids N+1 per-row calls to getSchoolPerformance). */
 export async function listSchoolPartnersWithStats(): Promise<SchoolListItemWithStats[]> {

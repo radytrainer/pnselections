@@ -71,8 +71,3 @@ export async function withClaims<T>(claims: Claims, fn: (db: Db) => Promise<T>):
     client.release();
   }
 }
-
-/** Public, unauthenticated reads (no claims => auth_role() = 'anonymous'). RLS still applies. */
-export function withAnonymous<T>(fn: (db: Db) => Promise<T>): Promise<T> {
-  return withClaims({}, fn);
-}

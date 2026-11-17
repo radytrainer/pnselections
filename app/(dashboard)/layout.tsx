@@ -21,9 +21,9 @@ export default function DashboardLayout({
 
   useEffect(() => {
     if (!authLoading && !user) {
-      router.replace("/login");
+      router.replace(`/login?next=${encodeURIComponent(pathname)}`);
     }
-  }, [authLoading, user, router]);
+  }, [authLoading, user, router, pathname]);
 
   useEffect(() => {
     if (roleLoading || role !== "committee_member") return;

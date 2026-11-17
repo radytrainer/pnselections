@@ -9,6 +9,7 @@ import { signInWithEmailAndPassword } from "firebase/auth";
 import { toast } from "sonner";
 import { Eye, EyeOff, MapPinned, ShieldCheck, Users2 } from "lucide-react";
 import { getFirebaseAuth } from "@/lib/firebase/client";
+import { ROLE_HOME, type AppRole } from "@/lib/constants";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -56,10 +57,13 @@ export default function LoginPage() {
     defaultValues: { email: "", password: "" },
   });
 
-  // Role-based redirect happens in (dashboard)/layout.tsx once claims load;
-  // /dashboard is a safe landing default for every role.
-  function goToDashboard() {
-    router.push("/dashboard");
+  // Back to the page that sent us here (middleware sets ?next=), else the
+  // role's landing page. `next` must be a same-site path — never "//host" or
+  // "/\host", which browsers treat as another origin (open redirect).
+  function goAfterLogin(role: AppRole | undefined) {
+    const next = new URLSearchParams(window.location.search).get("next");
+    const safeNext = next && /^\/(?![/\\])/.test(next) && !next.startsWith("/login") ? next : null;
+    router.replace(safeNext ?? (role && ROLE_HOME[role]) ?? "/dashboard");
   }
 
   async function onSubmit(values: LoginValues) {
@@ -71,13 +75,13 @@ export default function LoginPage() {
       // cookie check on the very first sign-in in a browser with no prior
       // session, bouncing straight back to /login. Await our own write here
       // so the cookie is guaranteed to exist before we navigate.
-      const idToken = await credential.user.getIdToken();
+      const { token: idToken, claims } = await credential.user.getIdTokenResult();
       await fetch("/api/auth/session", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ idToken }),
       });
-      goToDashboard();
+      goAfterLogin(claims.app_role as AppRole | undefined);
     } catch {
       toast.error("Sign in failed. Check your email and password.");
     } finally {

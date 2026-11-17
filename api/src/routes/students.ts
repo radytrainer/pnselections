@@ -60,8 +60,16 @@ function filterConditions(filters: ListFilters, params: Params, { includeGender 
   }
   if (filters.ngoIds) where.push(`s.referred_by_ngo_id = any(${params.add(filters.ngoIds)}::uuid[])`);
   if (filters.search) {
-    const term = params.add(`%${filters.search}%`);
-    where.push(`(s.first_name ilike ${term} or s.last_name ilike ${term} or s.student_code ilike ${term})`);
+    // Escape LIKE wildcards so "%"/"_" are matched literally, collapse runs of
+    // spaces, and match the full name both ways round — "Jarrod Mooney" and
+    // "Mooney Jarrod" must find the student, not just "Jarrod" or "Mooney".
+    const cleaned = filters.search.trim().replace(/\s+/g, " ").replace(/[\\%_]/g, (c) => `\\${c}`);
+    const term = params.add(`%${cleaned}%`);
+    where.push(
+      `(s.first_name ilike ${term} or s.last_name ilike ${term} or s.student_code ilike ${term}
+        or (s.first_name || ' ' || s.last_name) ilike ${term}
+        or (s.last_name || ' ' || s.first_name) ilike ${term})`,
+    );
   }
   return { where: where.join(" and "), visitorParam };
 }

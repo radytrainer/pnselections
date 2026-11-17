@@ -46,8 +46,9 @@ function filterStudents(students: OfflineStudent[], q: Query | undefined, includ
     if (homeVisitor && !(s.social_assessments ?? []).some((a) => a.visitor_name === homeVisitor)) return false;
     if (ngoIds.length > 0 && !ngoIds.includes(String(s.referred_by_ngo_id))) return false;
     if (search) {
-      const hay = `${s.first_name}\n${s.last_name}\n${s.student_code}`.toLowerCase();
-      if (!hay.includes(search)) return false;
+      const q = search.trim().replace(/\s+/g, " ");
+      const hay = `${s.first_name} ${s.last_name}\n${s.last_name} ${s.first_name}\n${s.student_code}`.toLowerCase();
+      if (!hay.includes(q)) return false;
     }
     return true;
   });

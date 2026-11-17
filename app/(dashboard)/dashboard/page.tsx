@@ -1,5 +1,6 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import {
@@ -23,10 +24,6 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { NgoYearlyChart } from "@/components/charts/NgoYearlyChart";
-import { VisitorStatsChart } from "@/components/charts/VisitorStatsChart";
-import { NgoTotalsChart } from "@/components/charts/NgoTotalsChart";
-import { ProvinceChart } from "@/components/charts/ProvinceChart";
 import {
   getDashboardData,
   getVisitorStats,
@@ -39,6 +36,26 @@ import { useCycleFilter } from "@/hooks/useCycleFilter";
 import { cn } from "@/lib/utils";
 import { CARD_COLOR_STYLES, type CardColor } from "@/lib/cardColors";
 import { StudentDetailDrawer } from "@/components/dashboard/StudentDetailDrawer";
+
+// Charts (recharts, ~120 KB) load in parallel with the dashboard data instead
+// of blocking the first paint; they only render once that data arrives anyway.
+const chartLoading = () => <Skeleton className="h-80 w-full" />;
+const NgoYearlyChart = dynamic(() => import("@/components/charts/NgoYearlyChart").then((m) => m.NgoYearlyChart), {
+  ssr: false,
+  loading: chartLoading,
+});
+const VisitorStatsChart = dynamic(() => import("@/components/charts/VisitorStatsChart").then((m) => m.VisitorStatsChart), {
+  ssr: false,
+  loading: chartLoading,
+});
+const NgoTotalsChart = dynamic(() => import("@/components/charts/NgoTotalsChart").then((m) => m.NgoTotalsChart), {
+  ssr: false,
+  loading: chartLoading,
+});
+const ProvinceChart = dynamic(() => import("@/components/charts/ProvinceChart").then((m) => m.ProvinceChart), {
+  ssr: false,
+  loading: chartLoading,
+});
 
 type GenderFilter = "" | "female" | "male" | "lgbtqia+";
 

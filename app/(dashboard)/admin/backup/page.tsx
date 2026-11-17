@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import * as XLSX from "xlsx";
 import { toast } from "sonner";
 import { ChevronDown, Database, Download, FileSpreadsheet, FileCode2, Loader2, ShieldAlert } from "lucide-react";
 import { downloadSqlBackup, getBackupData, listBackupTables, type BackupTable } from "@/services/adminToolsService";
@@ -123,6 +122,7 @@ export default function BackupPage() {
     setBusy("excel");
     try {
       const data = await getBackupData(selected.map((t) => t.name));
+      const XLSX = await import("xlsx"); // large; only needed for this export
       const workbook = XLSX.utils.book_new();
       const used = new Set<string>();
 

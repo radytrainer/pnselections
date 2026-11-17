@@ -187,7 +187,3 @@ export async function getNgoYearlyStats(): Promise<NgoYearlyStat[]> {
 
   return Array.from(byKey.values()).sort((a, b) => a.year - b.year || a.ngoName.localeCompare(b.ngoName));
 }
-
-export async function createNgoProject(ngoId: string, name: string, description?: string) {
-  return api.post<NgoProject>(`/api/v1/ngos/${ngoId}/projects`, { name, description: description || undefined });
-}

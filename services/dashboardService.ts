@@ -54,18 +54,6 @@ export async function getDashboardData(cycleId?: string): Promise<DashboardData>
   };
 }
 
-// Keep for backward compatibility if needed elsewhere
-export type DashboardKpis = {
-  totalStudents: number;
-  femaleStudents: number;
-  maleStudents: number;
-  lgbtqiaStudents: number;
-  selectedStudents: number;
-  partnerNgos: number;
-  partnerSchools: number;
-  provincesCovered: number;
-};
-
 export type VisitorStat = { visitorName: string; studentCount: number };
 
 /**

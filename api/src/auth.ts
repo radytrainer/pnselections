@@ -45,11 +45,6 @@ type TokenVerifier = (idToken: string) => Promise<Claims>;
 let verifier: TokenVerifier = async (idToken) =>
   (await firebaseAuth().verifyIdToken(idToken)) as unknown as Claims;
 
-/** Swaps the token verifier (used by the local smoke-test script only). */
-export function setTokenVerifier(fn: TokenVerifier) {
-  verifier = fn;
-}
-
 /**
  * Verifies a Firebase ID token, memoizing the decoded claims in Redis until
  * shortly before the token expires so repeat requests skip the signature check.
