@@ -1,13 +1,18 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { toast } from "sonner";
 import {
   CheckCircle2,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   CircleSlash,
   Download,
+  FileDown,
+  FileSpreadsheet,
+  FileText,
+  Loader2,
   PencilLine,
   RotateCcw,
   Save,
@@ -32,10 +37,12 @@ import {
 } from "@/components/ui/dialog";
 import { ResponsiveDataTable, type ResponsiveColumnMeta } from "@/components/tables/ResponsiveDataTable";
 import {
+  candidateGender,
   evaluate,
   paperMax,
   round,
   ruleGroups,
+  ruleLabel,
   ruleMax,
   ruleThreshold,
   type CandidateResult,
@@ -45,8 +52,12 @@ import {
   type RuleUnit,
 } from "@/features/written-exam/scoring";
 import { saveRules, setScoreOverride, updateCandidate } from "@/services/writtenExamService";
-import { downloadXlsx } from "@/components/exams/readSpreadsheet";
 import { NextSteps } from "@/components/exams/NextSteps";
+import { ResultsPrint } from "@/components/exams/ResultsPrint";
+import { exportResultsDocx, exportResultsXlsx, type ResultsExport, type ResultStatusLabel } from "@/components/exams/resultsExport";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+
+const GENDER_LABEL: Record<string, string> = { female: "Female", male: "Male", "lgbtqia+": "LGBTQIA+" };
 import { cn } from "@/lib/utils";
 
 type TabProps = { data: ExamData; canEdit: boolean; reload: () => Promise<void> };
@@ -91,6 +102,9 @@ export function ResultsTab({ data, canEdit, reload }: TabProps) {
   const [editing, setEditing] = useState<CandidateResult | null>(null);
   const [excluding, setExcluding] = useState<CandidateResult | null>(null);
   const [reason, setReason] = useState("");
+  const [exporting, setExporting] = useState(false);
+  /** Set while the printable PDF report is open. */
+  const [printing, setPrinting] = useState<ResultsExport | null>(null);
 
   const papers = useMemo(() => [...data.papers].sort((a, b) => a.sort_order - b.sort_order), [data.papers]);
   const paperById = useMemo(() => new Map(papers.map((p) => [p.id, p])), [papers]);
@@ -366,26 +380,67 @@ export function ResultsTab({ data, canEdit, reload }: TabProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data, canEdit, papers, viewRules]);
 
-  async function exportExcel() {
-    const header = ["ID", "Name", "Exam center", "Room", ...papers.map((p) => `${p.name} (/${round(paperMax(p))})`), "Result", "Reason", "Manual scores"];
-    const body = filtered.map((r) => {
+  /** Exactly what the table shows (all pages): filters, exam center, search, sort and pass marks. */
+  function buildExport(): ResultsExport {
+    const rowsOut = filtered.map((r, i) => {
       const place = placeOf(r);
       const s = statusOf(r);
-      return [
-        r.candidate.exam_number,
-        r.candidate.full_name ?? "",
-        place.center ?? "",
-        place.room ?? "",
-        ...papers.map((p) => (r.scores[p.id] ? round(r.scores[p.id]!.total) : null)),
-        STATUS[s].label,
-        s === "failed" ? failReason(r) : s === "excluded" ? (r.candidate.exclude_reason ?? "") : "",
-        papers
-          .filter((p) => r.scores[p.id]?.manual)
-          .map((p) => `${p.name}: ${r.scores[p.id]!.manual!.reason}`)
-          .join("; "),
-      ];
+      return {
+        n: i + 1,
+        id: r.candidate.exam_number,
+        name: r.candidate.full_name || r.candidate.student?.name || "",
+        gender: GENDER_LABEL[candidateGender(r.candidate) ?? ""] ?? "",
+        center: place.center ?? "Not assigned",
+        room: place.room ?? "",
+        scores: papers.map((p) => (r.scores[p.id] ? round(r.scores[p.id]!.total) : null)),
+        manual: papers.map((p) => !!r.scores[p.id]?.manual),
+        result: STATUS[s].label as ResultStatusLabel,
+        reason: s === "failed" ? failReason(r) : s === "excluded" ? (r.candidate.exclude_reason ?? "") : "",
+      };
     });
-    await downloadXlsx(`exam-results-${data.cycle.year}-${new Date().toISOString().slice(0, 10)}.xlsx`, "Results", [header, ...body]);
+    const shownPassed = rowsOut.filter((r) => r.result === "Pass");
+    const shownMarked = rowsOut.filter((r) => r.result === "Pass" || r.result === "Fail").length;
+    const genderCount = (g: string) => shownPassed.filter((r) => r.gender === g).length;
+    const filterText = filter === "all" ? "All candidates" : (tiles.find((x) => x.key === filter)?.label ?? "");
+    const centerText = centerId === ALL ? "all exam centers" : centerId === NONE ? "no exam center" : (centerById.get(centerId)?.name ?? "");
+    const passMarks = viewRules.length
+      ? groups.map((g) => g.map((i) => ruleLabel(viewRules[i], papers)).join(" or ")).join("  AND  ")
+      : "Not set";
+    const date = new Date();
+    return {
+      fileBase: `Exam results - ${data.cycle.name}${centerId !== ALL && centerId !== NONE ? ` - ${centerText}` : ""}${filter !== "all" ? ` - ${filterText}` : ""}`,
+      cycleName: data.cycle.name,
+      generated: date.toLocaleDateString(undefined, { day: "numeric", month: "long", year: "numeric" }),
+      scope: `${filterText} · ${centerText}${search.trim() ? ` · search “${search.trim()}”` : ""} · ${rowsOut.length} candidate${rowsOut.length === 1 ? "" : "s"}`,
+      passMarks,
+      summary: [
+        { label: "Candidates", value: String(rowsOut.length) },
+        { label: "Passed", value: String(shownPassed.length) },
+        { label: "Not passed", value: String(rowsOut.filter((r) => r.result === "Fail").length) },
+        { label: "Absent", value: String(rowsOut.filter((r) => r.result === "Absent").length) },
+        { label: "Pass rate", value: shownMarked ? `${Math.round((100 * shownPassed.length) / shownMarked)}%` : "—" },
+        { label: "Passed girls / boys", value: `${genderCount("Female")} / ${genderCount("Male")}` },
+      ],
+      papers: papers.map((p) => ({ name: p.name, max: round(paperMax(p)) })),
+      rows: rowsOut,
+    };
+  }
+
+  const closePrint = useCallback(() => setPrinting(null), []);
+
+  async function runExport(kind: "xlsx" | "docx" | "pdf") {
+    if (!filtered.length) return;
+    const model = buildExport();
+    if (kind === "pdf") return setPrinting(model);
+    setExporting(true);
+    try {
+      if (kind === "xlsx") await exportResultsXlsx(model);
+      else await exportResultsDocx(model);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Export failed");
+    } finally {
+      setExporting(false);
+    }
   }
 
   const unnamed = results.filter((r) => !r.candidate.full_name?.trim() && !r.candidate.student).length;
@@ -555,9 +610,23 @@ export function ResultsTab({ data, canEdit, reload }: TabProps) {
             </SelectContent>
           </Select>
         </div>
-        <Button variant="outline" onClick={exportExcel} disabled={filtered.length === 0}>
-          <Download /> Export {filtered.length} to Excel
-        </Button>
+        <DropdownMenu>
+          <DropdownMenuTrigger render={<Button variant="outline" disabled={filtered.length === 0 || exporting} />}>
+            {exporting ? <Loader2 className="animate-spin" /> : <Download />} Export {filtered.length}
+            <ChevronDown className="opacity-60" />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-56">
+            <DropdownMenuItem onClick={() => runExport("xlsx")}>
+              <FileSpreadsheet /> Excel (.xlsx)
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => runExport("pdf")}>
+              <FileDown /> PDF (print → Save as PDF)
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => runExport("docx")}>
+              <FileText /> Word (.docx)
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
 
       {unnamed > 0 && (
@@ -588,6 +657,7 @@ export function ResultsTab({ data, canEdit, reload }: TabProps) {
       {canEdit && !marksDirty && <NextSteps data={data} results={results} reload={reload} />}
 
       {editing && <EditScoresDialog result={editing} papers={papers} onClose={() => setEditing(null)} reload={reload} />}
+      {printing && <ResultsPrint model={printing} onDone={closePrint} />}
 
       <Dialog open={!!excluding} onOpenChange={(o) => !o && setExcluding(null)}>
         <DialogContent className="sm:max-w-sm">

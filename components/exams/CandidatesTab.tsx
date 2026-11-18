@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import { ChevronLeft, ChevronRight, FileUp, Link2, Pencil, Search, Trash2, UserPlus, Users, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, Download, FileUp, Link2, Pencil, Search, Trash2, UserPlus, Users, X } from "lucide-react";
 import type { ColumnDef, RowSelectionState } from "@tanstack/react-table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -17,7 +17,37 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { ResponsiveDataTable, type ResponsiveColumnMeta } from "@/components/tables/ResponsiveDataTable";
-import { readSpreadsheet } from "@/components/exams/readSpreadsheet";
+import { downloadXlsxBook, readSpreadsheet } from "@/components/exams/readSpreadsheet";
+
+/** Excel template for "Import list": the columns the importer reads, two examples, and instructions. */
+async function downloadCandidateTemplate() {
+  const header = ["ID number", "First name", "Last name", "Gender", "DoB", "High school", "Province", "NGO"];
+  await downloadXlsxBook("candidate-list-template.xlsx", [
+    {
+      name: "Candidates",
+      rows: [header, ["0001", "Sokha", "Chan", "F", "14/03/2008", "Hun Sen Kampong Kantout", "Kandal", "PSE"], ["0002", "Dara", "Kim", "M", "02/11/2007", "Bak Touk High School", "Phnom Penh", ""]],
+      widths: [11, 16, 16, 8, 12, 30, 16, 22],
+      textColumns: [0, 4],
+    },
+    {
+      name: "How to fill",
+      rows: [
+        ["Column", "Required?", "What to write"],
+        ["ID number", "Recommended", "The exam number (the ZipGrade StudentID). 1, 01 and 0001 are the same ID. Leave empty to let the app give numbers."],
+        ["First name", "Yes*", "Given name. *Or use one 'Name' column with the full name instead of First/Last."],
+        ["Last name", "Yes*", "Family name."],
+        ["Gender", "Recommended", "F or M (also Female/Male, ស្រី/ប្រុស). Needed for the girls/boys statistics."],
+        ["DoB", "Optional", "Date of birth as DD/MM/YYYY, or an Excel date."],
+        ["High school", "Optional", "Printed on the attendance and display lists."],
+        ["Province", "Optional", "Printed on the attendance list."],
+        ["NGO", "Optional", "Referring NGO, printed on the attendance list."],
+        [],
+        ["Tips", "", "Delete the two example rows before importing. An ID that already exists (for example from imported results) gets its name and details filled in instead of a new candidate."],
+      ],
+      widths: [14, 14, 110],
+    },
+  ]);
+}
 import { candidateGender, sessionLabel, type ExamCandidate, type ExamData, type Gender } from "@/features/written-exam/scoring";
 import {
   addCandidates,
@@ -549,9 +579,14 @@ function ImportListDialog({ cycleId, onDone, run }: { cycleId: string; onDone: (
           </DialogDescription>
         </DialogHeader>
         <input ref={fileRef} id="candidate-list-file" type="file" accept=".csv,.xlsx,.xls" className="hidden" onChange={(e) => e.target.files?.[0] && onFile(e.target.files[0])} />
-        <Button variant="outline" onClick={() => fileRef.current?.click()}>
-          <FileUp /> Choose file
-        </Button>
+        <div className="grid gap-2 sm:grid-cols-2">
+          <Button variant="outline" onClick={() => fileRef.current?.click()}>
+            <FileUp /> Choose file
+          </Button>
+          <Button variant="ghost" onClick={() => downloadCandidateTemplate().catch(() => toast.error("Couldn't create the template"))}>
+            <Download /> Download template
+          </Button>
+        </div>
         {error && <p className="text-sm text-rose-600">{error}</p>}
         {rows && (
           <div className="space-y-3 text-sm">

@@ -1,16 +1,19 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { differenceInYears, format } from "date-fns";
-import { AlertCircle, AlertTriangle, ArrowLeft, CheckCircle2, Download, Loader2, type LucideIcon } from "lucide-react";
+import { toast } from "sonner";
+import { AlertCircle, AlertTriangle, ArrowLeft, CheckCircle2, Download, FileText, ImagePlus, Loader2, X, type LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { StudentAvatar } from "@/components/students/StudentAvatar";
 import { buildSections, buildVac, type Need, type Row } from "@/components/committee/SocialFormSummary";
 import { useAuth } from "@/hooks/useAuth";
 import { displayStudentStatus } from "@/lib/constants";
-import { pickLatestPhotoPath } from "@/lib/storage";
+import { getSignedStudentDocumentUrl, pickLatestPhotoPath } from "@/lib/storage";
+import { fetchReportImage, toReportImage, type ReportImage } from "./reportImages";
+import type { ReportModel, ReportRating, ReportRow } from "./reportDocx";
 import {
   CATEGORY_LABELS,
   isFailedHomeVisit,
@@ -38,6 +41,9 @@ const RATING: Record<Need, { label: string; icon: LucideIcon; text: string; dot:
 };
 
 type Data = { student: StudentDetail; cycleName: string | null; ngoName: string | null };
+/** One of the 4 photo slots before the signatures. */
+type Photo = { image: ReportImage; caption: string } | null;
+const RATING_WORD: Record<Need, ReportRating> = { high: "Concern", medium: "Watch", low: "OK" };
 
 export default function StudentReportPage() {
   const { studentId } = useParams<{ studentId: string }>();
@@ -98,6 +104,31 @@ export default function StudentReportPage() {
     return () => clearTimeout(t);
   }, [data]);
 
+  // Photos added for this report (kept in the browser only, not saved).
+  const [photos, setPhotos] = useState<Photo[]>([null, null, null, null]);
+  const photosRef = useRef(photos);
+  useEffect(() => {
+    photosRef.current = photos;
+  }, [photos]);
+  useEffect(() => () => photosRef.current.forEach((p) => p && URL.revokeObjectURL(p.image.url)), []);
+  const [wordBusy, setWordBusy] = useState(false);
+
+  async function downloadWord() {
+    if (!data) return;
+    setWordBusy(true);
+    try {
+      const photoPath = pickLatestPhotoPath(data.student.student_documents);
+      const url = photoPath ? await getSignedStudentDocumentUrl(photoPath) : null;
+      const studentPhoto = url ? await fetchReportImage(url, 600) : null;
+      const { downloadStudentReportDocx } = await import("./reportDocx");
+      await downloadStudentReportDocx(buildReportModel(data, visit, fullName, photos, studentPhoto));
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Couldn't create the Word file");
+    } finally {
+      setWordBusy(false);
+    }
+  }
+
   // Repeated in the bottom margin of every printed page (CSS @page margin boxes).
   const pageFooter = data
     ? `Home Visit Report · ${fullName} (${data.student.student_code}) · Confidential`.replace(/["\\]/g, "")
@@ -125,8 +156,11 @@ export default function StudentReportPage() {
         <Link href="/students" className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground">
           <ArrowLeft className="size-4" /> Back to students
         </Link>
-        <div className="flex items-center gap-3">
-          <span className="hidden text-xs text-muted-foreground sm:inline">In the print window choose “Save as PDF”.</span>
+        <div className="flex items-center gap-2">
+          <span className="hidden text-xs text-muted-foreground lg:inline">For PDF, choose “Save as PDF” in the print window.</span>
+          <Button variant="outline" onClick={downloadWord} disabled={!data || wordBusy}>
+            {wordBusy ? <Loader2 className="animate-spin" /> : <FileText />} Download Word
+          </Button>
           <Button onClick={() => window.print()} disabled={!data}>
             <Download /> Download PDF
           </Button>
@@ -141,14 +175,26 @@ export default function StudentReportPage() {
             <Loader2 className="size-4 animate-spin" /> Preparing report…
           </p>
         ) : (
-          <ReportBody data={data} visit={visit} fullName={fullName} />
+          <ReportBody data={data} visit={visit} fullName={fullName} photos={photos} onPhotos={setPhotos} />
         )}
       </article>
     </div>
   );
 }
 
-function ReportBody({ data, visit, fullName }: { data: Data; visit: SocialAssessmentRow | null; fullName: string }) {
+function ReportBody({
+  data,
+  visit,
+  fullName,
+  photos,
+  onPhotos,
+}: {
+  data: Data;
+  visit: SocialAssessmentRow | null;
+  fullName: string;
+  photos: Photo[];
+  onPhotos: (next: Photo[]) => void;
+}) {
   const s = data.student;
   const age = s.dob ? differenceInYears(new Date(), new Date(s.dob)) : (visit?.age ?? null);
   const address = [s.village_name, s.commune_name, s.district_name, s.provinces?.name_en].filter(Boolean).join(", ");
@@ -197,6 +243,14 @@ function ReportBody({ data, visit, fullName }: { data: Data; visit: SocialAssess
       ) : (
         <VisitReport visit={visit} visitCount={s.social_assessments.length} />
       )}
+
+      {/* Photos, then sign-off */}
+      <PhotoSection photos={photos} onChange={onPhotos} />
+      <section className="avoid-break mt-10 grid grid-cols-3 gap-8 text-[9pt]">
+        <Signature label="Home visitor" name={visit?.visitor_name} />
+        <Signature label="Reviewed by (Selection committee)" />
+        <Signature label="Date" />
+      </section>
 
       {/* Footer */}
       <footer className="mt-8 border-t pt-2 text-[7.5pt] text-slate-500">
@@ -293,12 +347,6 @@ function VisitReport({ visit, visitCount }: { visit: SocialAssessmentRow; visitC
         </section>
       )}
 
-      {/* Sign-off */}
-      <section className="avoid-break mt-10 grid grid-cols-3 gap-8 text-[9pt]">
-        <Signature label="Home visitor" name={visit.visitor_name} />
-        <Signature label="Reviewed by (Selection committee)" />
-        <Signature label="Date" />
-      </section>
     </>
   );
 }
@@ -403,4 +451,172 @@ function Signature({ label, name }: { label: string; name?: string | null }) {
       {name && <p className="text-slate-900">{name}</p>}
     </div>
   );
+}
+
+/**
+ * Four photo slots (2 × 2) before the signatures. On screen each empty slot
+ * opens the file picker; "Add photos" fills several at once. Empty slots print
+ * as framed space, so a photo can be stuck on paper or pasted in Word later.
+ * Photos stay in this browser tab — they're not saved anywhere.
+ */
+function PhotoSection({ photos, onChange }: { photos: Photo[]; onChange: (next: Photo[]) => void }) {
+  const multiRef = useRef<HTMLInputElement>(null);
+  const [busy, setBusy] = useState(false);
+  const filled = photos.filter(Boolean).length;
+
+  async function add(files: FileList | null, slot?: number) {
+    if (!files?.length) return;
+    setBusy(true);
+    try {
+      const next = [...photos];
+      const free = slot != null ? [slot] : next.map((p, i) => (p ? -1 : i)).filter((i) => i >= 0);
+      const list = Array.from(files).slice(0, free.length);
+      for (const [k, file] of list.entries()) {
+        next[free[k]] = { image: await toReportImage(file), caption: "" };
+      }
+      if (files.length > list.length) toast.info(`Only ${list.length} more photo${list.length === 1 ? "" : "s"} fit (4 in total).`);
+      onChange(next);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Couldn't read that image");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function remove(i: number) {
+    const p = photos[i];
+    if (p) URL.revokeObjectURL(p.image.url);
+    onChange(photos.map((x, j) => (j === i ? null : x)));
+  }
+
+  return (
+    <section className="avoid-break mt-6">
+      <div className="mb-2 flex items-center justify-between gap-3">
+        <SectionHeading>Photos</SectionHeading>
+        <div className="no-print flex items-center gap-2">
+          <span className="text-xs text-slate-500">Up to 4 photos · used for this download only, not saved</span>
+          <input ref={multiRef} type="file" accept="image/*" multiple className="hidden" onChange={(e) => add(e.target.files).finally(() => (e.target.value = ""))} />
+          <Button variant="outline" size="sm" disabled={busy || filled >= 4} onClick={() => multiRef.current?.click()}>
+            {busy ? <Loader2 className="animate-spin" /> : <ImagePlus />} Add photos
+          </Button>
+        </div>
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        {photos.map((p, i) => (
+          <figure key={i} className="avoid-break">
+            {p ? (
+              <div className="group relative">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={p.image.url} alt={p.caption || `Photo ${i + 1}`} className="h-[58mm] w-full rounded-md border border-slate-200 bg-slate-50 object-contain" />
+                <button
+                  type="button"
+                  onClick={() => remove(i)}
+                  className="no-print absolute top-1.5 right-1.5 rounded-full bg-white/90 p-1 text-slate-700 shadow hover:bg-white"
+                  aria-label={`Remove photo ${i + 1}`}
+                >
+                  <X className="size-4" />
+                </button>
+              </div>
+            ) : (
+              <label className="flex h-[58mm] w-full cursor-pointer flex-col items-center justify-center gap-1 rounded-md border-2 border-dashed border-slate-300 text-[9pt] text-slate-400 print:cursor-default">
+                <ImagePlus className="no-print size-6" />
+                <span className="no-print">Add photo</span>
+                <span className="hidden print:inline">Photo</span>
+                <input type="file" accept="image/*" className="hidden" disabled={busy} onChange={(e) => add(e.target.files, i).finally(() => (e.target.value = ""))} />
+              </label>
+            )}
+            {p && (
+              <>
+                <input
+                  aria-label={`Caption for photo ${i + 1}`}
+                  placeholder="Caption (optional), e.g. Front of the house"
+                  value={p.caption}
+                  onChange={(e) => onChange(photos.map((x, j) => (j === i && x ? { ...x, caption: e.target.value } : x)))}
+                  className="no-print mt-1 w-full rounded border border-slate-200 px-2 py-1 text-[9pt]"
+                  maxLength={120}
+                />
+                {p.caption && <figcaption className="mt-1 hidden text-center text-[8.5pt] text-slate-600 print:block">{p.caption}</figcaption>}
+              </>
+            )}
+          </figure>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+/** Everything the Word file needs, in the same order and wording as the page. */
+function buildReportModel(data: Data, visit: SocialAssessmentRow | null, fullName: string, photos: Photo[], studentPhoto: ReportImage | null): ReportModel {
+  const s = data.student;
+  const age = s.dob ? differenceInYears(new Date(), new Date(s.dob)) : (visit?.age ?? null);
+  const address = [s.village_name, s.commune_name, s.district_name, s.provinces?.name_en].filter(Boolean).join(", ");
+  const generated = format(new Date(), "d MMMM yyyy");
+  const row = (r: Row): ReportRow => ({
+    label: r.label,
+    value: r.value,
+    note: r.note,
+    rating: r.need ? RATING_WORD[r.need] : undefined,
+  });
+
+  let visitModel: ReportModel["visit"] = null;
+  if (visit) {
+    const category = visit.category as SocialFormCategory;
+    const failed = isFailedHomeVisit(visit.final_score ?? 0, visit.manual_failed);
+    const vac = buildVac(visit);
+    const sections = buildSections(visit).filter((sec) => sec.rows.length > 0);
+    const all = [...vac.rows, ...sections.flatMap((sec) => sec.rows)];
+    visitModel = {
+      line: [
+        `Home visit #${visit.visit_number}${s.social_assessments.length > 1 ? ` (latest of ${s.social_assessments.length})` : ""}`,
+        visit.visit_date ? format(new Date(visit.visit_date), "d MMMM yyyy") : "",
+        visit.visitor_name ? `Visited by ${visit.visitor_name}` : "",
+      ]
+        .filter(Boolean)
+        .join(" · "),
+      stats: [
+        { label: "Poverty score", value: String(visit.final_score ?? "—"), note: failed ? "Failed home visit" : CATEGORY_LABELS[category], hint: "Lower score = poorer household" },
+        {
+          label: "Vulnerability checklist",
+          value: visit.vac_total_score != null ? `${visit.vac_total_score}/36` : "—",
+          note: vac.tier ? VAC_TIER_LABELS[vac.tier] : "Not recorded",
+          hint: vac.answered < vac.total ? `Only ${vac.answered} of ${vac.total} items answered` : "Lower score = more vulnerable",
+        },
+      ],
+      counts: {
+        concerns: all.filter((r) => r.need === "high").length,
+        watch: all.filter((r) => r.need === "medium").length,
+        ok: all.filter((r) => r.need === "low").length,
+      },
+      concerns: all.filter((r) => r.need === "high").map(row),
+      strengths: all.filter((r) => r.need === "low").map(row),
+      sections: [...(vac.rows.length ? [{ title: "Vulnerability Checklist", rows: vac.rows.map(row) }] : []), ...sections.map((sec) => ({ title: sec.title, rows: sec.rows.map(row) }))],
+      facts: [
+        { label: "Poverty certificate", value: visit.poverty_certificate ?? "" },
+        { label: "Distance from town", value: visit.distance_from_town ?? "" },
+      ].filter((f) => f.value),
+      comments: visit.visitor_comments?.trim() || null,
+      visitorName: visit.visitor_name ?? null,
+    };
+  }
+
+  return {
+    fileName: `Home Visit Report - ${fullName} (${s.student_code})`,
+    cycleName: data.cycleName,
+    generated,
+    student: {
+      name: fullName,
+      code: s.student_code,
+      photo: studentPhoto,
+      fields: [
+        { label: "Gender", value: GENDER[s.gender] ?? s.gender },
+        { label: "Age", value: age != null ? `${age} years${s.dob ? ` (born ${format(new Date(s.dob), "d MMM yyyy")})` : ""}` : "" },
+        { label: "Address", value: address },
+        { label: "School", value: s.school_partners?.school_name ?? "" },
+        { label: "Referred by", value: data.ngoName ?? "" },
+        { label: "Current status", value: displayStudentStatus(s.status, s.elimination_reason).replace(/_/g, " ") },
+      ],
+    },
+    visit: visitModel,
+    photos,
+  };
 }
