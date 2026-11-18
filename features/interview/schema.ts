@@ -38,13 +38,33 @@ export function computeMaxScore(questionCount: number): number {
   return questionCount * 5;
 }
 
-/** Percentage-based so grading scales with however many questions are active — 60%/50% preserve the original 48/80 and 40/80 cutoffs. */
-export function computeGrade(total: number, maxScore: number): "A1" | "A2" | "not_recommended" {
+/**
+ * The cycle's pass mark (migration 0059, set on Configuration → Interview Questions).
+ * percent: total / max * 100 >= value · points: total >= value.
+ */
+export type InterviewPassRule = { mode: "percent" | "points"; value: number };
+
+/** The original fixed rule (40/80 with 16 questions) — used when no cycle rule is loaded. */
+export const DEFAULT_INTERVIEW_PASS_RULE: InterviewPassRule = { mode: "percent", value: 50 };
+
+/** The pass mark in points for a given maximum score. */
+export function passMarkPoints(rule: InterviewPassRule, maxScore: number): number {
+  return rule.mode === "points" ? rule.value : Math.ceil((rule.value / 100) * maxScore - 1e-9);
+}
+
+/**
+ * Passed = A1 (60%+) or A2 (below 60%); failed = not_recommended. Same rule as the
+ * API (api/src/routes/assessments.ts#gradeFor) so re-grading on the server matches.
+ */
+export function computeGrade(
+  total: number,
+  maxScore: number,
+  rule: InterviewPassRule = DEFAULT_INTERVIEW_PASS_RULE,
+): "A1" | "A2" | "not_recommended" {
   if (maxScore <= 0) return "not_recommended";
-  const pct = total / maxScore;
-  if (pct >= 0.6) return "A1";
-  if (pct >= 0.5) return "A2";
-  return "not_recommended";
+  const pass = rule.mode === "points" ? total >= rule.value : (total / maxScore) * 100 >= rule.value;
+  if (!pass) return "not_recommended";
+  return total / maxScore >= 0.6 ? "A1" : "A2";
 }
 
 /**

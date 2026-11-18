@@ -9,7 +9,10 @@ import {
   computeMaxScore,
   computeGrade,
   interviewResultLabel,
+  passMarkPoints,
+  DEFAULT_INTERVIEW_PASS_RULE,
   type InterviewFormValues,
+  type InterviewPassRule,
 } from "@/features/interview/schema";
 import type { InterviewCategoryWithQuestions } from "@/services/interviewQuestionService";
 import { Button } from "@/components/ui/button";
@@ -28,9 +31,11 @@ import { cn } from "@/lib/utils";
 function ScoreSummary({
   categories,
   values,
+  passRule,
 }: {
   categories: InterviewCategoryWithQuestions[];
   values: InterviewFormValues;
+  passRule: InterviewPassRule;
 }) {
   const answers = values.answers ?? {};
   const allQuestionIds = categories.flatMap((c) => c.questions.map((q) => q.id));
@@ -38,7 +43,8 @@ function ScoreSummary({
 
   const total = computeTotal(answers);
   const maxScore = computeMaxScore(allQuestionIds.length);
-  const grade = allRated ? computeGrade(total, maxScore) : null;
+  const grade = allRated ? computeGrade(total, maxScore, passRule) : null;
+  const passMark = passMarkPoints(passRule, maxScore);
 
   const categoryTotals = categories.map((cat) => ({
     label: cat.name,
@@ -54,6 +60,10 @@ function ScoreSummary({
           {allRated ? total : "—"} / {maxScore}
         </span>
       </div>
+      <p className="text-xs text-muted-foreground">
+        Pass mark: <span className="font-medium text-foreground">{passMark} / {maxScore}</span>
+        {passRule.mode === "percent" && ` (${passRule.value}%)`}
+      </p>
       <div className="grid gap-2 text-xs text-muted-foreground" style={{ gridTemplateColumns: `repeat(${categoryTotals.length || 1}, minmax(0, 1fr))` }}>
         {categoryTotals.map(({ label, total: ct, max }) => (
           <div key={label} className="text-center">
@@ -82,8 +92,10 @@ export function InterviewForm({
   categories,
   defaultValues,
   onSubmit,
+  passRule = DEFAULT_INTERVIEW_PASS_RULE,
 }: {
   categories: InterviewCategoryWithQuestions[];
+  passRule?: InterviewPassRule;
   defaultValues?: Partial<InterviewFormValues>;
   onSubmit: (values: InterviewFormValues) => Promise<void>;
 }) {
@@ -191,7 +203,7 @@ export function InterviewForm({
           );
         })}
 
-        <ScoreSummary categories={categories} values={watched} />
+        <ScoreSummary categories={categories} values={watched} passRule={passRule} />
 
         <FormField
           control={form.control}

@@ -57,6 +57,15 @@ offlineRouter.get("/bundle", async (req, res) => {
       ),
       // For the interview form offline: the cycle's interview centers.
       interviewCenters: cycleId ? await db.rows("select id, cycle_id, name from interview_centers where cycle_id = $1 order by name", [cycleId]) : [],
+      // The cycle's interview pass mark, so offline interviews are graded with the same rule.
+      interviewPassRule: cycleId
+        ? await db.one(
+            `select interview_pass_mode as mode, interview_pass_value::float as value,
+                    (select count(*)::int from interview_questions where is_active and deleted_at is null) as "questionCount"
+               from selection_cycles where id = $1`,
+            [cycleId],
+          )
+        : null,
       students,
       interviewAnswers: Object.fromEntries(answers.map((a) => [a.interview_id, a.answers])),
     };

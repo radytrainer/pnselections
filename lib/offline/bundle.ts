@@ -14,6 +14,7 @@ type Bundle = {
   schools: unknown[];
   interviewCategories: unknown[];
   interviewCenters?: unknown[];
+  interviewPassRule?: unknown;
   students: (OfflineStudent & {
     exam_results: unknown;
     interviews: { id: string } | null;
@@ -46,6 +47,8 @@ export async function downloadForOffline(onProgress?: (message: string) => void,
   put("/api/v1/interview-categories", bundle.interviewCategories);
   // Same URL the interview form requests (services/interviewCenterService listInterviewCenters).
   if (bundle.cycleId) entries.push([buildUrl("/api/v1/interview-centers", { cycleId: bundle.cycleId }), { data: bundle.interviewCenters ?? [], savedAt: now }]);
+  // Same URL services/interviewService getInterviewPassRule requests.
+  if (bundle.cycleId && bundle.interviewPassRule) entries.push([buildUrl("/api/v1/interview-pass-rule", { cycleId: bundle.cycleId }), { data: bundle.interviewPassRule, savedAt: now }]);
 
   for (const student of bundle.students) {
     const latest = [...student.social_assessments].sort((a, b) => b.visit_number - a.visit_number)[0] ?? null;

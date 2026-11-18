@@ -17,6 +17,7 @@ import {
   type InterviewQuestion,
 } from "@/services/interviewQuestionService";
 import { InterviewQuestionForm } from "@/components/forms/InterviewQuestionForm";
+import { InterviewPassRuleCard } from "@/components/forms/InterviewPassRuleCard";
 import type { InterviewQuestionFormValues } from "@/features/interview/schema";
 import { useRole } from "@/hooks/useRole";
 import { can } from "@/lib/rbac";
@@ -185,6 +186,10 @@ export default function InterviewQuestionsAdminPage() {
           New Category
         </Button>
       </div>
+
+      <InterviewPassRuleCard
+        activeQuestionCount={categories.reduce((n, c) => n + c.questions.filter((q) => q.is_active).length, 0)}
+      />
 
       {categories.length === 0 ? (
         <p className="text-sm text-muted-foreground">No categories yet.</p>

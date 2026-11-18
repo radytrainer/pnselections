@@ -5,11 +5,11 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { setFlash } from "@/lib/offline/store";
 import { getStudent, type StudentDetail } from "@/services/studentService";
-import { saveInterview, getInterviewAnswers } from "@/services/interviewService";
+import { saveInterview, getInterviewAnswers, getInterviewPassRule } from "@/services/interviewService";
 import { listInterviewCategories, type InterviewCategoryWithQuestions } from "@/services/interviewQuestionService";
 import { InterviewForm } from "@/components/forms/InterviewForm";
 import { Skeleton } from "@/components/ui/skeleton";
-import type { InterviewFormValues } from "@/features/interview/schema";
+import { DEFAULT_INTERVIEW_PASS_RULE, type InterviewFormValues, type InterviewPassRule } from "@/features/interview/schema";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { listInterviewCenters, type InterviewCenter } from "@/services/interviewCenterService";
 
@@ -24,6 +24,7 @@ export function InterviewEntry({ studentId, doneHref }: { studentId: string; don
   const [loading, setLoading] = useState(true);
   const [centers, setCenters] = useState<InterviewCenter[]>([]);
   const [centerId, setCenterId] = useState("");
+  const [passRule, setPassRule] = useState<InterviewPassRule>(DEFAULT_INTERVIEW_PASS_RULE);
 
   useEffect(() => {
     Promise.all([getStudent(studentId), listInterviewCategories()])
@@ -35,6 +36,10 @@ export function InterviewEntry({ studentId, doneHref }: { studentId: string; don
         listInterviewCenters(s.cycle_id)
           .then(setCenters)
           .catch(() => setCenters([]));
+        // The cycle's pass mark (cached offline too); the original 50% rule if it can't load.
+        await getInterviewPassRule(s.cycle_id)
+          .then((r) => setPassRule({ mode: r.mode, value: Number(r.value) }))
+          .catch(() => undefined);
         if (s.interviews) {
           setExistingAnswers(await getInterviewAnswers(s.interviews.id));
         }
@@ -53,6 +58,7 @@ export function InterviewEntry({ studentId, doneHref }: { studentId: string; don
         formValues: values,
         questionIds: categories.flatMap((c) => c.questions.map((q) => q.id)),
         interviewCenterId: centerId || undefined,
+        passRule,
       });
       if (queued) setFlash("Saved on this device — it will sync automatically when you're back online");
       toast.success(queued ? "Saved on this device — it will sync automatically when you're back online" : "Interview saved");
@@ -109,7 +115,7 @@ export function InterviewEntry({ studentId, doneHref }: { studentId: string; don
           <p className="text-xs text-muted-foreground">Where this interview takes place. Used to filter students and on the Selection Process page.</p>
         </div>
       )}
-      <InterviewForm categories={categories} defaultValues={defaultValues} onSubmit={handleSubmit} />
+      <InterviewForm categories={categories} passRule={passRule} defaultValues={defaultValues} onSubmit={handleSubmit} />
     </div>
   );
 }

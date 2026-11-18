@@ -95,6 +95,8 @@ export type Database = {
           start_date: string;
           end_date: string | null;
           exam_pass_threshold: number;
+          interview_pass_mode: "percent" | "points";
+          interview_pass_value: number;
           status: "planning" | "active" | "closed" | "archived";
           created_at: string;
           updated_at: string;
@@ -106,6 +108,8 @@ export type Database = {
           start_date: string;
           end_date?: string | null;
           exam_pass_threshold?: number;
+          interview_pass_mode?: "percent" | "points";
+          interview_pass_value?: number;
           status?: "planning" | "active" | "closed" | "archived";
           created_at?: string;
           updated_at?: string;

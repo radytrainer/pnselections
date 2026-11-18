@@ -4,6 +4,7 @@ import { asUser } from "../auth";
 import type { Db } from "../db";
 import { insertRow, insertRows, updateRows } from "../sql";
 import { uuidParam } from "./util";
+import { badRequest, forbidden, notFound } from "../errors";
 
 /**
  * Exam results, interviews (+ per-question answers), the interview question
@@ -135,6 +136,121 @@ assessmentsRouter.put("/interviews/student/:studentId", async (req, res) => {
     await db.exec("select apply_interview_outcome($1, $2, $3)", [studentId, input.recommendation, input.interviewCenterId ?? null]);
   });
   res.json({ ok: true });
+});
+
+// ---------------------------------------------------------------------------
+// Interview pass rule (migration 0059) — per cycle, set by super_admin /
+// program_manager (selection_cycles_write RLS). Same rule as
+// features/interview/schema.ts#computeGrade on the client.
+// ---------------------------------------------------------------------------
+type PassRule = { mode: "percent" | "points"; value: number };
+
+function gradeFor(total: number, max: number, rule: PassRule): "A1" | "A2" | "not_recommended" {
+  if (max <= 0) return "not_recommended";
+  const pass = rule.mode === "points" ? total >= rule.value : (total / max) * 100 >= rule.value;
+  if (!pass) return "not_recommended";
+  return total / max >= 0.6 ? "A1" : "A2";
+}
+
+const passRuleBody = z.object({
+  mode: z.enum(["percent", "points"]),
+  value: z.number().min(0),
+});
+
+async function loadPassRule(db: Db, cycleId: string): Promise<PassRule> {
+  const row = await db.one<{ interview_pass_mode: PassRule["mode"]; interview_pass_value: string }>(
+    "select interview_pass_mode, interview_pass_value from selection_cycles where id = $1",
+    [cycleId],
+  );
+  if (!row) throw notFound("Cycle");
+  return { mode: row.interview_pass_mode, value: Number(row.interview_pass_value) };
+}
+
+/** Every saved interview in the cycle with its total / max and current recommendation. */
+async function cycleInterviewTotals(db: Db, cycleId: string) {
+  return db.rows<{ id: string; student_id: string; recommendation: string | null; total: number; max: number }>(
+    `select iv.id, iv.student_id, iv.recommendation,
+            coalesce(sum(ia.score), 0)::int as total, (count(ia.id) * 5)::int as max
+       from interviews iv left join interview_answers ia on ia.interview_id = iv.id
+      where iv.cycle_id = $1
+      group by iv.id`,
+    [cycleId],
+  );
+}
+
+function compareRule(rows: Awaited<ReturnType<typeof cycleInterviewTotals>>, rule: PassRule) {
+  let passed = 0;
+  let failed = 0;
+  let toPass = 0;
+  let toFail = 0;
+  for (const r of rows) {
+    if (r.max <= 0) continue;
+    const next = gradeFor(r.total, r.max, rule);
+    const wasPass = r.recommendation === "A1" || r.recommendation === "A2";
+    const isPass = next !== "not_recommended";
+    if (isPass) passed++;
+    else failed++;
+    if (isPass && !wasPass) toPass++;
+    if (!isPass && wasPass) toFail++;
+  }
+  return { interviewed: passed + failed, passed, failed, toPass, toFail };
+}
+
+assessmentsRouter.get("/interview-pass-rule", async (req, res) => {
+  const cycleId = z.string().uuid().parse(req.query.cycleId);
+  res.json(
+    await asUser(req, async (db) => {
+      const rule = await loadPassRule(db, cycleId);
+      const questionCount = await db.value<number>(
+        "select count(*)::int from interview_questions where is_active and deleted_at is null",
+      );
+      return { ...rule, questionCount: questionCount ?? 0 };
+    }),
+  );
+});
+
+/** What a candidate rule would do to the interviews already saved in the cycle (nothing is changed). */
+assessmentsRouter.get("/interview-pass-rule/preview", async (req, res) => {
+  const cycleId = z.string().uuid().parse(req.query.cycleId);
+  const rule = passRuleBody.parse({ mode: req.query.mode, value: Number(req.query.value) });
+  res.json(await asUser(req, async (db) => compareRule(await cycleInterviewTotals(db, cycleId), rule)));
+});
+
+/**
+ * Saves the cycle's rule. With reapply, interviews already saved are re-graded
+ * with it: their result is updated and students move in/out of the process
+ * the same way as when an interview is saved (apply_interview_outcome).
+ */
+assessmentsRouter.put("/interview-pass-rule", async (req, res) => {
+  if (!["super_admin", "program_manager"].includes(req.user?.role ?? "")) throw forbidden();
+  const input = passRuleBody.extend({ cycleId: z.string().uuid(), reapply: z.boolean().optional() }).parse(req.body);
+  if (input.mode === "percent" && input.value > 100) throw badRequest("A percentage can't be above 100");
+  const result = await asUser(req, async (db) => {
+    await loadPassRule(db, input.cycleId);
+    await updateRows(
+      db,
+      "selection_cycles",
+      { interview_pass_mode: input.mode, interview_pass_value: input.value },
+      { id: input.cycleId },
+    );
+    let changed = 0;
+    if (input.reapply) {
+      const rule = { mode: input.mode, value: input.value };
+      for (const r of await cycleInterviewTotals(db, input.cycleId)) {
+        if (r.max <= 0) continue;
+        const next = gradeFor(r.total, r.max, rule);
+        if (next === r.recommendation) continue;
+        const flips = (next === "not_recommended") !== (r.recommendation === "not_recommended") || !r.recommendation;
+        await updateRows(db, "interviews", { recommendation: next }, { id: r.id });
+        if (flips) {
+          await db.exec("select apply_interview_outcome($1, $2, null)", [r.student_id, next]);
+          changed++;
+        }
+      }
+    }
+    return { changed };
+  });
+  res.json({ ok: true, ...result });
 });
 
 // ---------------------------------------------------------------------------
