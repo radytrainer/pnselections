@@ -1103,6 +1103,11 @@ export type Database = {
           passed: number;
           passed_girls: number;
           passed_boys: number;
+          attended_girls: number;
+          attended_boys: number;
+          failed: number;
+          failed_girls: number;
+          failed_boys: number;
           updated_at: string;
         };
         Insert: {
@@ -1114,6 +1119,11 @@ export type Database = {
           passed?: number;
           passed_girls?: number;
           passed_boys?: number;
+          attended_girls?: number;
+          attended_boys?: number;
+          failed?: number;
+          failed_girls?: number;
+          failed_boys?: number;
           updated_at?: string;
         };
         Update: Partial<Database["public"]["Tables"]["exam_result_stats"]["Insert"]>;

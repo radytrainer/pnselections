@@ -21,15 +21,17 @@ import { useRole } from "@/hooks/useRole";
 import { can } from "@/lib/rbac";
 import type { ExamData } from "@/features/written-exam/scoring";
 import { getExamData, setExamLock } from "@/services/writtenExamService";
+import { syncSelectionProcess } from "@/features/written-exam/sync";
 
+// Results first: it's what most people open the page for.
 const TABS = [
+  { value: "results", label: "Results" },
   { value: "candidates", label: "Candidates" },
   { value: "planning", label: "Planning" },
   { value: "papers", label: "Papers & keys" },
   { value: "import", label: "Import results" },
   { value: "analysis", label: "Question analysis" },
   { value: "rules", label: "Pass rules" },
-  { value: "results", label: "Results" },
 ] as const;
 type Tab = (typeof TABS)[number]["value"];
 const TAB_KEY = "exams-tab";
@@ -45,7 +47,7 @@ export default function ExamsPage() {
   const { cycles, cycleId, setCycleId, loading: cyclesLoading } = useCycleFilter();
   const [data, setData] = useState<ExamData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState<Tab>("papers");
+  const [tab, setTab] = useState<Tab>("results");
 
   useEffect(() => {
     try {
@@ -62,7 +64,10 @@ export default function ExamsPage() {
       return;
     }
     try {
-      setData(await getExamData(cycleId));
+      const next = await getExamData(cycleId);
+      setData(next);
+      // Keep the Selection Process exam numbers up to date (best effort, in the background).
+      syncSelectionProcess(next).catch(() => {});
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to load exam data");
     } finally {
@@ -83,6 +88,15 @@ export default function ExamsPage() {
 
   const locked = data?.cycle.exam_rules_locked ?? false;
   const canEdit = can(role, "enterExamScores") && !locked;
+
+  function changeTab(v: Tab) {
+    setTab(v);
+    try {
+      localStorage.setItem(TAB_KEY, v);
+    } catch {
+      // storage unavailable
+    }
+  }
 
   async function toggleLock() {
     if (!cycleId) return;
@@ -138,17 +152,7 @@ export default function ExamsPage() {
           <Skeleton className="h-64 w-full" />
         </div>
       ) : (
-        <Tabs
-          value={tab}
-          onValueChange={(v) => {
-            setTab(v as Tab);
-            try {
-              localStorage.setItem(TAB_KEY, String(v));
-            } catch {
-              // ignore
-            }
-          }}
-        >
+        <Tabs value={tab} onValueChange={(v) => changeTab(v as Tab)}>
           <div className="overflow-x-auto [scrollbar-width:none]">
             <TabsList>
               {TABS.map((t) => (
@@ -168,7 +172,8 @@ export default function ExamsPage() {
             <PapersTab data={data} canEdit={canEdit} reload={reload} />
           </TabsContent>
           <TabsContent value="import" className="mt-4">
-            <ImportTab data={data} canEdit={canEdit} reload={reload} />
+            {/* After an import, show the results. */}
+            <ImportTab data={data} canEdit={canEdit} reload={reload} onImported={() => changeTab("results")} />
           </TabsContent>
           <TabsContent value="analysis" className="mt-4">
             <AnalysisTab data={data} canEdit={canEdit} reload={reload} />

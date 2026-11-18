@@ -45,14 +45,25 @@ export function examResultStats(data: ExamData) {
       else absent++;
     }
   }
-  const passed = evaluate(data, data.rules).filter((r) => r.passed);
+  const results = evaluate(data, data.rules);
+  const girls = (list: typeof results) => list.filter((r) => candidateGender(r.candidate) === "female").length;
+  const boys = (list: typeof results) => list.filter((r) => candidateGender(r.candidate) === "male").length;
+  // "Sat" = at least one paper scored; excluded candidates are counted as neither passed nor failed.
+  const sat = results.filter((r) => Object.keys(r.scores).length > 0);
+  const passed = results.filter((r) => r.passed);
+  const failed = data.rules.length ? sat.filter((r) => !r.passed && !r.candidate.excluded) : [];
   return {
     attended,
     partially_attended: partially,
     absent,
     still_to_be_done: stillToDo,
+    attended_girls: girls(sat),
+    attended_boys: boys(sat),
     passed: passed.length,
-    passed_girls: passed.filter((r) => candidateGender(r.candidate) === "female").length,
-    passed_boys: passed.filter((r) => candidateGender(r.candidate) === "male").length,
+    passed_girls: girls(passed),
+    passed_boys: boys(passed),
+    failed: failed.length,
+    failed_girls: girls(failed),
+    failed_boys: boys(failed),
   };
 }

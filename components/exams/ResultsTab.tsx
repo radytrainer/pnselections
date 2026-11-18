@@ -247,7 +247,7 @@ export function ResultsTab({ data, canEdit, reload }: TabProps) {
           card: "title",
           cardCell: (r) => (
             <div className="min-w-0">
-              <p className="truncate font-medium">{r.candidate.full_name || "No name"}</p>
+              <p className="truncate font-medium">{r.candidate.full_name || r.candidate.student?.name || "No name"}</p>
               <p className="text-xs text-muted-foreground">
                 <span className="font-mono">{r.candidate.exam_number}</span>
                 {placeOf(r).center ? ` · ${placeOf(r).center}` : ""}
@@ -257,7 +257,7 @@ export function ResultsTab({ data, canEdit, reload }: TabProps) {
         } satisfies Meta,
         cell: ({ row }) => (
           <div className="min-w-0">
-            <p className="max-w-60 truncate font-medium">{row.original.candidate.full_name || <span className="font-normal text-muted-foreground">No name</span>}</p>
+            <p className="max-w-60 truncate font-medium">{row.original.candidate.full_name || row.original.candidate.student?.name || <span className="font-normal text-muted-foreground">No name</span>}</p>
             {row.original.candidate.student && <p className="text-xs text-muted-foreground">Student {row.original.candidate.student.code}</p>}
           </div>
         ),
@@ -388,6 +388,7 @@ export function ResultsTab({ data, canEdit, reload }: TabProps) {
     await downloadXlsx(`exam-results-${data.cycle.year}-${new Date().toISOString().slice(0, 10)}.xlsx`, "Results", [header, ...body]);
   }
 
+  const unnamed = results.filter((r) => !r.candidate.full_name?.trim() && !r.candidate.student).length;
   const passRate = counts.passed + counts.failed ? Math.round((100 * counts.passed) / (counts.passed + counts.failed)) : 0;
   const tiles: { key: Filter; label: string; value: number; sub: string; tone: string }[] = [
     { key: "all", label: "Candidates", value: counts.all, sub: `${counts.all - counts.absent - counts.excluded} sat the exam`, tone: "" },
@@ -558,6 +559,14 @@ export function ResultsTab({ data, canEdit, reload }: TabProps) {
           <Download /> Export {filtered.length} to Excel
         </Button>
       </div>
+
+      {unnamed > 0 && (
+        <p className="rounded-lg border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-200">
+          <strong>{unnamed} candidate{unnamed === 1 ? " has" : "s have"} no name.</strong> The ZipGrade results only contain ID numbers. To show names, import
+          your candidate list on the <strong>Candidates</strong> tab (Import list: ID number, First name, Last name…). Matching IDs get their names
+          filled in, and 1, 01 and 0001 count as the same ID. Linking a candidate to a student also gives them a name.
+        </p>
+      )}
 
       <ResponsiveDataTable data={rows} columns={columns} getRowId={(r) => r.candidate.id} empty="No candidates match." />
 

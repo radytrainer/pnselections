@@ -302,11 +302,16 @@ const importInput = z.object({
 writtenExamsRouter.post("/written-exams/papers/:id/import", async (req, res) => {
   const id = uuidParam(req, "id");
   const input = importInput.parse(req.body);
-  const numbers = input.sheets.map((s) => s.examNumber);
-  if (new Set(numbers).size !== numbers.length) throw badRequest("Each exam number may appear only once — resolve duplicates first");
+  if (new Set(input.sheets.map((s) => canonical(s.examNumber))).size !== input.sheets.length) {
+    throw badRequest("Each exam number may appear only once — resolve duplicates first");
+  }
 
   const result = await asUser(req, async (db) => {
     const cycleId = await paperCycle(db, id);
+    // Use the existing spelling of each number ("7" in the file = candidate "0007").
+    const existing = await existingByValue(db, cycleId, input.sheets.map((s) => s.examNumber));
+    for (const s of input.sheets) s.examNumber = existing.get(canonical(s.examNumber)) ?? s.examNumber;
+    const numbers = input.sheets.map((s) => s.examNumber);
     await assertUnlocked(db, cycleId);
     const userId = await currentUserId(db);
 
@@ -448,6 +453,20 @@ writtenExamsRouter.post("/written-exams/lock", async (req, res) => {
 // ---------------------------------------------------------------------------
 const gender = z.enum(["male", "female", "lgbtqia+"]);
 
+/** Exam numbers compare by value: Excel turns "0001" into 1, so "1" = "01" = "0001". */
+const canonical = (n: string) => n.trim().replace(/^0+(?=\d)/, "");
+
+/** Existing candidates whose number has the same value as one of these, keyed by canonical value. */
+async function existingByValue(db: Db, cycleId: string, numbers: string[]) {
+  if (!numbers.length) return new Map<string, string>();
+  const rows = await db.rows<{ exam_number: string }>(
+    `select exam_number from exam_candidates
+     where cycle_id = $1 and regexp_replace(exam_number, '^0+(?=\\d)', '') = any($2::text[])`,
+    [cycleId, [...new Set(numbers.map(canonical))]],
+  );
+  return new Map(rows.map((r) => [canonical(r.exam_number), r.exam_number]));
+}
+
 /** Optional details printed on the attendance sheet (for candidates not linked to a student). */
 const optText = (max: number) => z.string().trim().max(max).nullish();
 const detailFields = {
@@ -557,29 +576,40 @@ writtenExamsRouter.post("/written-exams/candidates", async (req, res) => {
     })
     .parse(req.body);
   const given = input.candidates.map((c) => c.examNumber).filter(Boolean) as string[];
-  if (new Set(given).size !== given.length) throw badRequest("An exam number appears more than once in the list");
-  const created = await asUser(req, async (db) => {
+  if (new Set(given.map(canonical)).size !== given.length) throw badRequest("An exam number appears more than once in the list");
+  const result = await asUser(req, async (db) => {
     await assertUnlocked(db, input.cycleId);
-    if (given.length) {
-      const clash = await db.rows<{ exam_number: string }>(
-        "select exam_number from exam_candidates where cycle_id = $1 and exam_number = any($2::text[])",
-        [input.cycleId, given],
+    // A number that already exists (compared by value: "1" = "0001") updates that candidate
+    // instead: e.g. results imported first without names, then the candidate list.
+    const existing = await existingByValue(db, input.cycleId, given);
+    const toUpdate = input.candidates.filter((c) => c.examNumber && existing.has(canonical(c.examNumber)));
+    const toCreate = input.candidates.filter((c) => !c.examNumber || !existing.has(canonical(c.examNumber)));
+    for (const c of toUpdate) {
+      const number = existing.get(canonical(c.examNumber!))!;
+      const cols = detailColumns(c);
+      // The list's values win, but empty cells never erase what's already there.
+      await db.exec(
+        `update exam_candidates set
+           full_name = coalesce(nullif($3, ''), full_name), gender = coalesce($4, gender),
+           first_name = coalesce($5, first_name), last_name = coalesce($6, last_name), dob = coalesce($7::date, dob),
+           high_school = coalesce($8, high_school), province = coalesce($9, province), ngo = coalesce($10, ngo)
+         where cycle_id = $1 and exam_number = $2`,
+        [input.cycleId, number, c.fullName, c.gender ?? null, cols.first_name ?? null, cols.last_name ?? null, cols.dob ?? null, cols.high_school ?? null, cols.province ?? null, cols.ngo ?? null],
       );
-      if (clash.length) throw badRequest(`Exam number${clash.length > 1 ? "s" : ""} already used: ${clash.slice(0, 10).map((c) => c.exam_number).join(", ")}`);
     }
-    const generated = await nextNumbers(db, input.cycleId, input.candidates.filter((c) => !c.examNumber).length, input.startNumber, input.digits);
+    const generated = await nextNumbers(db, input.cycleId, toCreate.filter((c) => !c.examNumber).length, input.startNumber, input.digits);
     let g = 0;
-    const rows = input.candidates.map((c) => ({
+    const rows = toCreate.map((c) => ({
       cycle_id: input.cycleId,
       exam_number: c.examNumber ?? generated[g++],
       full_name: c.fullName,
       gender: c.gender ?? null,
       ...detailColumns(c),
     }));
-    await insertRows(db, "exam_candidates", rows);
-    return rows.length;
+    if (rows.length) await insertRows(db, "exam_candidates", rows);
+    return { created: rows.length, updated: toUpdate.length };
   });
-  res.status(201).json({ created });
+  res.status(201).json(result);
 });
 
 /** Creates a candidate (with a new exam number) for every student in the cycle who isn't one yet. */

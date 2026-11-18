@@ -75,6 +75,11 @@ export function examResultValues(stats: ExamResultStats | null) {
       passed: 0,
       passed_girls: 0,
       passed_boys: 0,
+      attended_girls: 0,
+      attended_boys: 0,
+      failed: 0,
+      failed_girls: 0,
+      failed_boys: 0,
     }
   );
 }
@@ -401,14 +406,30 @@ export function ExamResultsCard({ stats, cycleId, canEdit, onSaved }: CardProps<
       ],
     },
     {
-      title: "Passers",
+      title: "Sat the exam — by gender",
+      fields: [
+        { key: "attended_girls", label: "Girls" },
+        { key: "attended_boys", label: "Boys" },
+      ],
+    },
+    {
+      title: "Passed",
       fields: [
         { key: "passed", label: "Passed" },
         { key: "passed_girls", label: "Passed — girls" },
         { key: "passed_boys", label: "Passed — boys" },
       ],
     },
+    {
+      title: "Failed",
+      fields: [
+        { key: "failed", label: "Failed" },
+        { key: "failed_girls", label: "Failed — girls" },
+        { key: "failed_boys", label: "Failed — boys" },
+      ],
+    },
   ];
+  const marked = s.passed + s.failed;
 
   return (
     <StageCard
@@ -416,7 +437,7 @@ export function ExamResultsCard({ stats, cycleId, canEdit, onSaved }: CardProps<
       icon={GraduationCap}
       accent="emerald"
       title="Exam Results"
-      description="Outcomes of the entrance exam"
+      description="Outcomes of the entrance exam · updated automatically from Written Exams"
       canEdit={canEdit}
       groups={groups}
       values={s}
@@ -426,19 +447,30 @@ export function ExamResultsCard({ stats, cycleId, canEdit, onSaved }: CardProps<
       }}
     >
       <section className="space-y-3">
-        <BlockHeading>Attendance</BlockHeading>
+        <BlockHeading aside={`${formatNumber(s.attended + s.partially_attended)} sat the exam`}>Attendance</BlockHeading>
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
           <Metric value={s.attended} label="Attended" />
           <Metric value={s.absent} label="Absent" />
           <Metric value={s.partially_attended} label="Partial" />
           <Metric value={s.still_to_be_done} label="To do" tone={s.still_to_be_done > 0 ? "danger" : "default"} />
         </div>
+        <GenderSplit girls={s.attended_girls} boys={s.attended_boys} />
       </section>
       <section className="space-y-3">
-        <BlockHeading>Passed</BlockHeading>
-        <Metric value={s.passed} label="Passed the exam" tone="success" emphasis />
-        <RateBar label="Pass rate" value={s.passed} total={s.attended} />
-        <GenderSplit girls={s.passed_girls} boys={s.passed_boys} />
+        <BlockHeading>Results</BlockHeading>
+        <div className="grid grid-cols-2 gap-2">
+          <Metric value={s.passed} label="Passed" tone="success" emphasis />
+          <Metric value={s.failed} label="Failed" tone={s.failed > 0 ? "danger" : "default"} emphasis />
+        </div>
+        <RateBar label="Pass rate" value={s.passed} total={marked > 0 ? marked : s.attended} />
+        <div className="space-y-1">
+          <p className="text-xs font-medium text-muted-foreground">Passed by gender</p>
+          <GenderSplit girls={s.passed_girls} boys={s.passed_boys} />
+        </div>
+        <div className="space-y-1">
+          <p className="text-xs font-medium text-muted-foreground">Failed by gender</p>
+          <GenderSplit girls={s.failed_girls} boys={s.failed_boys} />
+        </div>
       </section>
     </StageCard>
   );

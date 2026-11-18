@@ -90,7 +90,8 @@ export function addCandidates(
   candidates: ({ examNumber?: string; fullName: string; gender?: Gender | null } & CandidateDetailInput)[],
   numbering: Numbering = {},
 ) {
-  return api.post<{ created: number }>("/api/v1/written-exams/candidates", { cycleId, candidates, ...numbering });
+  // A number that already exists (same value: "1" = "0001") updates that candidate's name and details.
+  return api.post<{ created: number; updated: number }>("/api/v1/written-exams/candidates", { cycleId, candidates, ...numbering });
 }
 
 export function addCandidatesFromStudents(cycleId: string, numbering: Numbering = {}, statuses?: string[]) {

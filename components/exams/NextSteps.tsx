@@ -82,9 +82,9 @@ export function NextSteps({ data, results, reload }: { data: ExamData; results: 
         />
         <Step
           icon={BarChart3}
-          title="Fill Selection Process numbers"
-          text={`${centerStats.centers_total} center${centerStats.centers_total === 1 ? "" : "s"} · ${resultStats.attended} attended · ${resultStats.passed} passed`}
-          action="Review…"
+          title="Selection Process numbers"
+          text={`Updated automatically after each change · ${resultStats.passed} passed · ${resultStats.failed} failed`}
+          action="Check / update now…"
           onClick={() => setDialog("stats")}
         />
       </CardContent>
@@ -168,7 +168,7 @@ export function NextSteps({ data, results, reload }: { data: ExamData; results: 
           <DialogHeader>
             <DialogTitle>Fill the Selection Process exam numbers?</DialogTitle>
             <DialogDescription>
-              Replaces the hand-typed numbers on the Exam Centers and Exam Results cards with these. Fields the exam module doesn&apos;t know
+              These numbers are written to the Exam Centers and Exam Results cards automatically whenever the results change; use this to update them right now. Fields the exam module doesn&apos;t know
               (like information sessions not linked) are left as they are.
             </DialogDescription>
           </DialogHeader>
@@ -183,6 +183,7 @@ export function NextSteps({ data, results, reload }: { data: ExamData; results: 
             <Row k="Absent" v={resultStats.absent} />
             <Row k="Still to be done" v={resultStats.still_to_be_done} />
             <Row k="Passed (girls / boys)" v={`${resultStats.passed} (${resultStats.passed_girls} / ${resultStats.passed_boys})`} />
+            <Row k="Failed (girls / boys)" v={`${resultStats.failed} (${resultStats.failed_girls} / ${resultStats.failed_boys})`} />
           </div>
           {resultStats.passed_girls + resultStats.passed_boys < resultStats.passed && (
             <p className="text-xs text-muted-foreground">

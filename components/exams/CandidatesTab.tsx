@@ -86,11 +86,11 @@ export function CandidatesTab({ data, canEdit, reload }: TabProps) {
   const rows = filtered.slice((current - 1) * PAGE, current * PAGE);
   const selectedIds = Object.keys(selection).filter((k) => selection[k]);
 
-  async function run(action: () => Promise<unknown>, message: string) {
+  async function run<T>(action: () => Promise<T>, message: string | ((result: T) => string)) {
     setBusy(true);
     try {
-      await action();
-      toast.success(message);
+      const result = await action();
+      toast.success(typeof message === "function" ? message(result) : message);
       await reload();
       return true;
     } catch (e) {
@@ -343,7 +343,7 @@ export function CandidatesTab({ data, canEdit, reload }: TabProps) {
   );
 }
 
-type Run = (action: () => Promise<unknown>, message: string) => Promise<boolean>;
+type Run = <T>(action: () => Promise<T>, message: string | ((result: T) => string)) => Promise<boolean>;
 
 function NumberingFields({ start, setStart, digits, setDigits }: { start: string; setStart: (v: string) => void; digits: string; setDigits: (v: string) => void }) {
   return (
@@ -544,7 +544,8 @@ function ImportListDialog({ cycleId, onDone, run }: { cycleId: string; onDone: (
           <DialogDescription>
             Excel or CSV with <strong>First name</strong> / <strong>Last name</strong> columns (or one <strong>Name</strong> column).
             Optional: <strong>ID number</strong> (exam number), <strong>Gender</strong> (M/F, Male/Female, ប្រុស/ស្រី), <strong>DoB</strong>,{" "}
-            <strong>High school</strong>, <strong>Province</strong> and <strong>NGO</strong>, all printed on the attendance sheet.
+            <strong>High school</strong>, <strong>Province</strong> and <strong>NGO</strong>, all printed on the attendance sheet. An ID
+            that already exists (e.g. from imported results) gets its name and details filled in; 1, 01 and 0001 count as the same ID.
           </DialogDescription>
         </DialogHeader>
         <input ref={fileRef} id="candidate-list-file" type="file" accept=".csv,.xlsx,.xls" className="hidden" onChange={(e) => e.target.files?.[0] && onFile(e.target.files[0])} />
@@ -568,7 +569,17 @@ function ImportListDialog({ cycleId, onDone, run }: { cycleId: string; onDone: (
           <Button
             disabled={!rows?.length}
             onClick={async () => {
-              if (rows && (await run(() => addCandidates(cycleId, rows, numbering(start, digits)), `${rows.length} candidates added`))) onDone();
+              if (
+                rows &&
+                (await run(
+                  () => addCandidates(cycleId, rows, numbering(start, digits)),
+                  (r) =>
+                    [r.created ? `${r.created} candidates added` : "", r.updated ? `${r.updated} existing candidates updated (names and details)` : ""]
+                      .filter(Boolean)
+                      .join(" · ") || "Nothing to import",
+                ))
+              )
+                onDone();
             }}
           >
             Import {rows?.length ?? ""}

@@ -194,7 +194,7 @@ export type Review = {
   exactDuplicates: DuplicateGroup[];
   /** Same number, different answers: someone must choose. */
   conflicts: DuplicateGroup[];
-  /** Number missing, "0", or a different length from most numbers. */
+  /** Number missing, "0" or not a number. */
   invalid: ZipEntry[];
   /** Number already belongs to a candidate with a different name. */
   nameMismatches: { entry: ZipEntry; existingName: string }[];
@@ -203,23 +203,41 @@ export type Review = {
   expectedLength: number;
 };
 
+/**
+ * Exam numbers are compared by value, not by spelling: Excel turns "0001"
+ * into 1, so "1", "01" and "0001" are the same candidate.
+ */
+export function canonicalNumber(n: string) {
+  const t = n.trim();
+  return /^\d+$/.test(t) ? t.replace(/^0+(?=\d)/, "") : t;
+}
+
 export function reviewEntries(entries: ZipEntry[], existing: ExamCandidate[]): Review {
   const lengths = new Map<number, number>();
   for (const e of entries) if (/^\d+$/.test(e.examNumber)) lengths.set(e.examNumber.length, (lengths.get(e.examNumber.length) ?? 0) + 1);
   const expectedLength = [...lengths.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? 4;
+  // Spell each number the way the candidate already exists ("1" in the file → "0001" in the app).
+  const existingByValue = new Map(existing.map((c) => [canonicalNumber(c.exam_number), c.exam_number]));
 
   const invalid: ZipEntry[] = [];
   const byNumber = new Map<string, ZipEntry[]>();
-  for (const e of entries) {
-    const ok = /^\d+$/.test(e.examNumber) && e.examNumber.length === expectedLength && Number(e.examNumber) > 0;
-    if (!ok) invalid.push(e);
-    else byNumber.set(e.examNumber, [...(byNumber.get(e.examNumber) ?? []), e]);
+  for (const raw of entries) {
+    // Any length is fine; only empty, non-numeric or zero numbers are unusable.
+    const ok = /^\d+$/.test(raw.examNumber) && Number(raw.examNumber) > 0;
+    if (!ok) {
+      invalid.push(raw);
+      continue;
+    }
+    const key = canonicalNumber(raw.examNumber);
+    const e = { ...raw, examNumber: existingByValue.get(key) ?? raw.examNumber };
+    byNumber.set(key, [...(byNumber.get(key) ?? []), e]);
   }
 
   const ready: ZipEntry[] = [];
   const exactDuplicates: DuplicateGroup[] = [];
   const conflicts: DuplicateGroup[] = [];
-  for (const [examNumber, list] of byNumber) {
+  for (const list of byNumber.values()) {
+    const examNumber = list[0].examNumber;
     if (list.length === 1) ready.push(list[0]);
     else if (new Set(list.map((e) => e.answers.join(","))).size === 1) {
       exactDuplicates.push({ examNumber, entries: list });

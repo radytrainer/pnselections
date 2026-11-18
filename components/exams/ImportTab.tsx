@@ -9,7 +9,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { acceptedAnswers, type ExamData } from "@/features/written-exam/scoring";
-import { guessSheet, parseZipGrade, reviewEntries, zipRowsFromMatrix, type ZipEntry, type ZipFile } from "@/features/written-exam/zipgrade";
+import { canonicalNumber, guessSheet, parseZipGrade, reviewEntries, zipRowsFromMatrix, type ZipEntry, type ZipFile } from "@/features/written-exam/zipgrade";
 import { importSheets } from "@/services/writtenExamService";
 import { readSpreadsheet } from "@/components/exams/readSpreadsheet";
 import { cn } from "@/lib/utils";
@@ -18,7 +18,7 @@ type TabProps = { data: ExamData; canEdit: boolean; reload: () => Promise<void> 
 type KeyCheck = { kind: "blocking" | "info"; message: string } | { kind: "diffs"; diffs: string[] };
 type Sheet = { name: string; matrix: unknown[][] };
 
-export function ImportTab({ data, canEdit, reload }: TabProps) {
+export function ImportTab({ data, canEdit, reload, onImported }: TabProps & { onImported?: () => void }) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [paperId, setPaperId] = useState(data.papers[0]?.id ?? "");
   const [fileName, setFileName] = useState<string | null>(null);
@@ -111,20 +111,22 @@ export function ImportTab({ data, canEdit, reload }: TabProps) {
     }
     for (const e of review.invalid) {
       const n = (fixes[e.row] ?? "").trim();
-      if (n) out.push({ ...e, examNumber: n });
+      // A typed fix uses the existing spelling of that number when the candidate exists ("7" → "0007").
+      if (n) out.push({ ...e, examNumber: data.candidates.find((c) => canonicalNumber(c.exam_number) === canonicalNumber(n))?.exam_number ?? n });
     }
     const badFix = review.invalid.find((e) => {
       const n = (fixes[e.row] ?? "").trim();
-      return n && (!/^\d+$/.test(n) || n.length !== review.expectedLength || Number(n) === 0);
+      return n && (!/^\d+$/.test(n) || Number(n) === 0);
     });
-    if (badFix) return { sheets: out, problem: `Row ${badFix.row}: exam numbers have ${review.expectedLength} digits.` };
+    if (badFix) return { sheets: out, problem: `Row ${badFix.row}: an exam number is digits only, and not 0.` };
     const seen = new Map<string, number>();
     for (const e of out) {
-      if (seen.has(e.examNumber)) return { sheets: out, problem: `Exam number ${e.examNumber} is used twice (rows ${seen.get(e.examNumber)} and ${e.row}).` };
-      seen.set(e.examNumber, e.row);
+      const k = canonicalNumber(e.examNumber);
+      if (seen.has(k)) return { sheets: out, problem: `Exam number ${e.examNumber} is used twice (rows ${seen.get(k)} and ${e.row}).` };
+      seen.set(k, e.row);
     }
     return { sheets: out, problem: null };
-  }, [review, choice, fixes]);
+  }, [review, choice, fixes, data.candidates]);
 
   // A hint for invalid numbers: gaps in the file's own run of numbers (e.g. 1728–1749 without 1737).
   const gaps = useMemo(() => {
@@ -138,7 +140,7 @@ export function ImportTab({ data, canEdit, reload }: TabProps) {
     const max = Math.max(...nums);
     if (max - min > 5000) return [];
     const out: string[] = [];
-    for (let n = min; n <= max && out.length <= 10; n++) if (!have.has(n)) out.push(String(n).padStart(review.expectedLength, "0"));
+    for (let n = min; n <= max && out.length <= 10; n++) if (!have.has(n)) out.push(String(n));
     return out.length <= 10 ? out : [];
   }, [review]);
 
@@ -186,6 +188,7 @@ export function ImportTab({ data, canEdit, reload }: TabProps) {
       setReplaceAll(false);
       reset();
       await reload();
+      onImported?.();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Import failed");
     } finally {
@@ -324,7 +327,7 @@ export function ImportTab({ data, canEdit, reload }: TabProps) {
               <CardHeader>
                 <CardTitle className="text-base">Missing or invalid exam numbers</CardTitle>
                 <CardDescription>
-                  These sheets have no usable number (exam numbers here have {review.expectedLength} digits). Type the right number to
+                  These sheets have no usable exam number (empty, 0 or not a number). Type the right number to
                   include a sheet, or leave it empty to skip it.
                   {gaps.length > 0 && (
                     <>
