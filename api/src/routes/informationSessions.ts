@@ -15,12 +15,14 @@ import { z } from "zod";
 import { asUser } from "../auth";
 import { withClaims } from "../db";
 import { badRequest, HttpError, notFound } from "../errors";
-import { rateLimitHit } from "../redis";
+import { publish, rateLimitHit, subscribe } from "../redis";
 import { deleteRows, insertRow, updateRows } from "../sql";
 import { qs, uuidParam } from "./util";
 import { assertUnlocked, nextNumbers } from "./writtenExams";
 
 export const informationSessionsRouter = Router();
+/** Redis channel for "a student just registered" on one session (live display). */
+const liveChannel = (sessionId: string) => `is-registrations:${sessionId}`;
 export const publicRegistrationRouter = Router();
 const uuid = z.string().uuid();
 
@@ -138,6 +140,60 @@ informationSessionsRouter.get("/information-sessions/:id/registrations", async (
       ),
     ),
   );
+});
+
+/**
+ * What the full-screen live display shows: names and counts only (no phone,
+ * date of birth or school — it goes on a projector).
+ */
+informationSessionsRouter.get("/information-sessions/:id/live", async (req, res) => {
+  const id = uuidParam(req, "id");
+  const data = await asUser(req, async (db) => {
+    const session = await db.one(
+      `select s.id, s.name, s.venue, s.session_date, s.reg_token, s.reg_open, s.reg_expires_at,
+         (select p.name_en from provinces p where p.id = s.province_id) as province_name
+       from information_sessions s where s.id = $1`,
+      [id],
+    );
+    if (!session) throw notFound("Information session");
+    const counts = await db.one<{ total: number; female: number; male: number; other: number }>(
+      `select count(*)::int as total,
+              count(*) filter (where gender = 'female')::int as female,
+              count(*) filter (where gender = 'male')::int as male,
+              count(*) filter (where gender = 'lgbtqia+')::int as other
+         from is_registrations where session_id = $1`,
+      [id],
+    );
+    const recent = await db.rows(
+      `select id, first_name, last_name, gender, created_at from is_registrations
+        where session_id = $1 order by created_at desc limit 500`,
+      [id],
+    );
+    return { session, counts, recent };
+  });
+  res.setHeader("Cache-Control", "no-store");
+  res.json(data);
+});
+
+/** Server-Sent Events: "registered" each time a student submits the form for this session. */
+informationSessionsRouter.get("/information-sessions/:id/stream", async (req, res) => {
+  const id = uuidParam(req, "id");
+  // RLS check: only staff who can see the session may listen.
+  const ok = await asUser(req, (db) => db.value<boolean>("select exists (select 1 from information_sessions where id = $1)", [id]));
+  if (!ok) throw notFound("Information session");
+  res.writeHead(200, {
+    "Content-Type": "text/event-stream",
+    "Cache-Control": "no-cache, no-transform",
+    Connection: "keep-alive",
+    "X-Accel-Buffering": "no",
+  });
+  res.write("retry: 3000\n\n");
+  const unsubscribe = subscribe(liveChannel(id), () => res.write("event: registered\ndata: {}\n\n"));
+  const heartbeat = setInterval(() => res.write(": ping\n\n"), 25_000);
+  req.on("close", () => {
+    clearInterval(heartbeat);
+    unsubscribe();
+  });
 });
 
 const regFields = {
@@ -275,6 +331,11 @@ publicRegistrationRouter.post("/register/:token", async (req, res) => {
     province_id: pick("provinceId", 36),
     exam_center_id: pick("examCenterId", 36),
   };
-  const result = await withClaims(PUBLIC_CLAIMS, (db) => db.value("select public_register($1, $2::jsonb)", [t, JSON.stringify(data)]));
-  res.json(result);
+  const result = await withClaims(PUBLIC_CLAIMS, (db) =>
+    db.value<{ ok: boolean; reason?: string; duplicate?: boolean; session_id?: string }>("select public_register($1, $2::jsonb)", [t, JSON.stringify(data)]),
+  );
+  const { session_id: sessionId, ...answer } = result ?? { ok: false };
+  // Tell any live display for this session (new registrations only).
+  if (answer.ok && !answer.duplicate && sessionId) await publish(liveChannel(sessionId), { at: Date.now() });
+  res.json(answer);
 });

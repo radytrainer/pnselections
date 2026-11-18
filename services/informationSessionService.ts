@@ -1,4 +1,4 @@
-import { api } from "@/lib/api/client";
+import { api, API_BASE_URL } from "@/lib/api/client";
 
 /** An information session and its registration link (migration 0061). */
 export type InformationSession = {
@@ -114,6 +114,31 @@ export function removeRegistrations(ids: string[]) {
 
 export function addRegistrationsToCandidates(ids: string[]) {
   return api.post<{ added: number; skipped: number; first?: string; last?: string }>("/api/v1/is-registrations/to-candidates", { ids });
+}
+
+export type LiveRegistrations = {
+  session: Pick<InformationSession, "id" | "name" | "venue" | "session_date" | "reg_token" | "reg_open" | "reg_expires_at" | "province_name">;
+  counts: { total: number; female: number; male: number; other: number };
+  recent: { id: string; first_name: string; last_name: string; gender: IsRegistration["gender"]; created_at: string }[];
+};
+
+/** Names + counts for the full-screen live display (no contact details). */
+export function getLiveRegistrations(sessionId: string) {
+  return api.get<LiveRegistrations>(`/api/v1/information-sessions/${sessionId}/live`);
+}
+
+/**
+ * Live "a student registered" events for one session (Server-Sent Events over
+ * Redis pub/sub, like the committee votes). Returns an unsubscribe function;
+ * `onStatus` reports whether the live connection is up.
+ */
+export function subscribeToRegistrations(sessionId: string, onRegistered: () => void, onStatus?: (live: boolean) => void): () => void {
+  if (typeof EventSource === "undefined") return () => {};
+  const source = new EventSource(`${API_BASE_URL}/api/v1/information-sessions/${sessionId}/stream`, { withCredentials: true });
+  source.addEventListener("registered", () => onRegistered());
+  source.onopen = () => onStatus?.(true);
+  source.onerror = () => onStatus?.(false);
+  return () => source.close();
 }
 
 // ---------------------------------------------------------------------------

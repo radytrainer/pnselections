@@ -1,8 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import { ArrowLeft, CalendarDays, Link2, Loader2, MapPin, Megaphone, Pencil, Plus, Search, Trash2, Users } from "lucide-react";
+import { ArrowLeft, CalendarDays, Link2, Loader2, MapPin, Megaphone, MonitorPlay, Pencil, Plus, Search, Trash2, Users } from "lucide-react";
 import { useRole } from "@/hooks/useRole";
 import { can } from "@/lib/rbac";
 import { useCycleFilter } from "@/hooks/useCycleFilter";
@@ -20,6 +20,7 @@ import {
   linkState,
   listInformationSessions,
   listRegistrations,
+  subscribeToRegistrations,
   updateInformationSession,
   type InformationSession,
   type IsRegistration,
@@ -112,6 +113,28 @@ export default function InformationSessionsPage() {
   useEffect(() => {
     loadRegs();
   }, [loadRegs]);
+
+  // Live: new registrations for the open session appear without reloading.
+  const refreshRef = useRef<() => void>(() => {});
+  refreshRef.current = () => {
+    load();
+    loadRegs();
+  };
+  useEffect(() => {
+    if (!selectedId) return;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const unsubscribe = subscribeToRegistrations(selectedId, () => {
+      if (timer) return;
+      timer = setTimeout(() => {
+        timer = null;
+        refreshRef.current();
+      }, 500);
+    });
+    return () => {
+      unsubscribe();
+      if (timer) clearTimeout(timer);
+    };
+  }, [selectedId]);
 
   const selected = sessions?.find((s) => s.id === selectedId) ?? null;
   const filtered = useMemo(() => {
@@ -242,6 +265,11 @@ export default function InformationSessionsPage() {
                   {selected.notes && <p className="mt-2 text-sm whitespace-pre-line text-muted-foreground">{selected.notes}</p>}
                 </div>
                 <div className="flex gap-1">
+                  <a href={`/live/info-sessions/${selected.id}`} target="_blank" rel="noreferrer" className="inline-flex" title="Full-screen live display for a projector or TV">
+                    <Button size="sm" tabIndex={-1}>
+                      <MonitorPlay /> Live display
+                    </Button>
+                  </a>
                   <Button variant="outline" size="sm" onClick={() => setDialog({ session: selected })}>
                     <Pencil /> Edit
                   </Button>
