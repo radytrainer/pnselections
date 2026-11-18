@@ -99,6 +99,12 @@ export default function StudentsPage() {
     } catch {
       // ignore malformed/inaccessible storage — falls back to defaults
     }
+    // A link like /students?status=exam_completed (e.g. "students ready for interview") opens filtered.
+    const fromUrl = new URLSearchParams(window.location.search).get("status");
+    if (fromUrl) {
+      setStatus(fromUrl);
+      setPage(1);
+    }
     setRestored(true);
   }, []);
 

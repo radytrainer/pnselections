@@ -102,6 +102,19 @@ export function editCandidate(id: string, patch: { gender?: Gender | null; fullN
   return api.patch(`/api/v1/written-exams/candidates/${id}`, patch);
 }
 
+/** Moves candidates to another room of their exam center (center and session stay). */
+export function moveCandidatesToRoom(cycleId: string, candidateIds: string[], roomId: string) {
+  return api.post<{ moved: number }>("/api/v1/written-exams/candidates/move-room", { cycleId, candidateIds, roomId });
+}
+
+/** Removes the given candidates (or all with "all"), with their imported sheets and manual scores. */
+export function removeCandidates(cycleId: string, which: "all" | string[]) {
+  return api.post<{ candidates: number; sheets: number }>(
+    "/api/v1/written-exams/candidates/remove",
+    which === "all" ? { cycleId, all: true } : { cycleId, candidateIds: which },
+  );
+}
+
 export function deleteCandidate(id: string) {
   return api.delete(`/api/v1/written-exams/candidates/${id}`);
 }

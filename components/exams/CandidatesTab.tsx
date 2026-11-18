@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import { ChevronLeft, ChevronRight, Download, FileUp, Link2, Pencil, Search, Trash2, UserPlus, Users, X } from "lucide-react";
+import { ArrowRightLeft, ChevronLeft, ChevronRight, Download, FileUp, Link2, Pencil, Search, Trash2, UserPlus, Users, X } from "lucide-react";
 import type { ColumnDef, RowSelectionState } from "@tanstack/react-table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -16,6 +16,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { cn } from "@/lib/utils";
 import { ResponsiveDataTable, type ResponsiveColumnMeta } from "@/components/tables/ResponsiveDataTable";
 import { downloadXlsxBook, readSpreadsheet } from "@/components/exams/readSpreadsheet";
 
@@ -57,6 +58,8 @@ import {
   deleteCandidate,
   editCandidate,
   listCycleStudents,
+  moveCandidatesToRoom,
+  removeCandidates,
   type CycleStudent,
 } from "@/services/writtenExamService";
 
@@ -90,6 +93,10 @@ export function CandidatesTab({ data, canEdit, reload }: TabProps) {
   const [page, setPage] = useState(1);
   const [selection, setSelection] = useState<RowSelectionState>({});
   const [dialog, setDialog] = useState<null | "add" | "import" | "students" | "assign">(null);
+  /** Candidates about to be removed: all of them, or the selected ids. */
+  const [removing, setRemoving] = useState<"all" | string[] | null>(null);
+  /** Candidates being moved to another room of their exam center. */
+  const [moving, setMoving] = useState<string[] | null>(null);
   const [editing, setEditing] = useState<ExamCandidate | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -115,6 +122,13 @@ export function CandidatesTab({ data, canEdit, reload }: TabProps) {
   const current = Math.min(page, pages);
   const rows = filtered.slice((current - 1) * PAGE, current * PAGE);
   const selectedIds = Object.keys(selection).filter((k) => selection[k]);
+  // "Move to room" works within one exam center: all selected must share it, and it needs rooms.
+  const moveCenter = (() => {
+    const ids = new Set(data.candidates.filter((c) => selectedIds.includes(c.id)).map((c) => c.center_id));
+    const only = ids.size === 1 ? [...ids][0] : null;
+    const center = only ? data.centers.find((c) => c.id === only) : null;
+    return center && center.rooms.length > 0 ? center : null;
+  })();
 
   async function run<T>(action: () => Promise<T>, message: string | ((result: T) => string)) {
     setBusy(true);
@@ -212,6 +226,17 @@ export function CandidatesTab({ data, canEdit, reload }: TabProps) {
         meta: { card: "actions", className: "w-px" } satisfies Meta,
         cell: ({ row }) => (
           <div className="flex justify-end gap-0.5">
+            {canEdit && (centerById.get(row.original.center_id ?? "")?.rooms.length ?? 0) > 1 && (
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                title="Move to another room"
+                onClick={() => setMoving([row.original.id])}
+                aria-label={`Move ${row.original.full_name ?? row.original.exam_number} to another room`}
+              >
+                <ArrowRightLeft />
+              </Button>
+            )}
             <Button variant="ghost" size="icon-sm" onClick={() => setEditing(row.original)} aria-label={`Edit ${row.original.full_name ?? row.original.exam_number}`}>
               <Pencil />
             </Button>
@@ -302,6 +327,11 @@ export function CandidatesTab({ data, canEdit, reload }: TabProps) {
             >
               <Link2 /> Link by name
             </Button>
+            {data.candidates.length > 0 && (
+              <Button variant="ghost" className="text-rose-700 hover:bg-rose-50 hover:text-rose-800 dark:text-rose-400 dark:hover:bg-rose-500/10" onClick={() => setRemoving("all")}>
+                <Trash2 /> Remove all
+              </Button>
+            )}
           </div>
         )}
       </div>
@@ -325,6 +355,18 @@ export function CandidatesTab({ data, canEdit, reload }: TabProps) {
             </Button>
             <Button size="sm" onClick={() => setDialog("assign")} disabled={!data.centers.length} title={data.centers.length ? undefined : "Add an exam center on the Planning tab first"}>
               Assign to center…
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={!moveCenter}
+              title={moveCenter ? undefined : "Select candidates from one exam center that has rooms"}
+              onClick={() => setMoving(selectedIds)}
+            >
+              <ArrowRightLeft /> Move to room…
+            </Button>
+            <Button size="sm" variant="destructive" disabled={busy} onClick={() => setRemoving(selectedIds)}>
+              <Trash2 /> Remove selected
             </Button>
           </div>
         </div>
@@ -354,6 +396,28 @@ export function CandidatesTab({ data, canEdit, reload }: TabProps) {
         </div>
       )}
 
+      {moving && (
+        <MoveRoomDialog
+          data={data}
+          ids={moving}
+          run={run}
+          onDone={(moved) => {
+            setMoving(null);
+            if (moved) setSelection({});
+          }}
+        />
+      )}
+      {removing && (
+        <RemoveDialog
+          data={data}
+          which={removing}
+          run={run}
+          onDone={(removed) => {
+            setRemoving(null);
+            if (removed) setSelection({});
+          }}
+        />
+      )}
       {dialog === "add" && <AddDialog cycleId={data.cycle.id} onDone={() => setDialog(null)} run={run} />}
       {dialog === "import" && <ImportListDialog cycleId={data.cycle.id} onDone={() => setDialog(null)} run={run} />}
       {dialog === "students" && <FromStudentsDialog cycleId={data.cycle.id} onDone={() => setDialog(null)} run={run} />}
@@ -449,6 +513,162 @@ function DetailFields({ value, onChange, disabled, idPrefix }: { value: DetailDr
       <div className="col-span-2">{field("highSchool", "High school")}</div>
       <div className="col-span-2">{field("ngo", "NGO")}</div>
     </div>
+  );
+}
+
+/**
+ * Moves one or more candidates to another room of their exam center (e.g.
+ * Room 1 → Room 2). Their center and session stay; seats are counted per room
+ * for the same session, with a warning when a room would be over capacity.
+ */
+function MoveRoomDialog({ data, ids, run, onDone }: { data: ExamData; ids: string[]; run: Run; onDone: (moved: boolean) => void }) {
+  const moving = data.candidates.filter((c) => ids.includes(c.id));
+  const center = data.centers.find((c) => c.id === moving[0]?.center_id);
+  const sessions = new Set(moving.map((c) => c.session_id));
+  const session = sessions.size === 1 ? [...sessions][0] : undefined;
+  const currentRooms = new Set(moving.map((c) => c.room_id));
+  const [roomId, setRoomId] = useState(() => center?.rooms.find((r) => !currentRooms.has(r.id))?.id ?? "");
+  if (!center) return null;
+
+  // Seats used per room: same session as the moving candidates (or all sessions if mixed), not counting them.
+  const used = (rid: string) =>
+    data.candidates.filter((c) => c.room_id === rid && !ids.includes(c.id) && (session === undefined || c.session_id === session)).length;
+  const target = center.rooms.find((r) => r.id === roomId);
+  const over = target?.capacity ? used(target.id) + ids.length - target.capacity : 0;
+  const name = moving.length === 1 ? moving[0].full_name || moving[0].exam_number : `${moving.length} candidates`;
+  const from = [...currentRooms].map((r) => center.rooms.find((x) => x.id === r)?.name ?? "no room").join(", ");
+
+  return (
+    <Dialog open onOpenChange={(o) => !o && onDone(false)}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Move {name} to another room</DialogTitle>
+          <DialogDescription>
+            {center.name} · now in {from}. The exam center and session stay the same.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-2" role="radiogroup" aria-label="Room">
+          {center.rooms.map((r) => {
+            const n = used(r.id);
+            const isCurrent = currentRooms.size === 1 && currentRooms.has(r.id);
+            const full = r.capacity != null && n + ids.length > r.capacity;
+            return (
+              <button
+                key={r.id}
+                type="button"
+                role="radio"
+                aria-checked={roomId === r.id}
+                disabled={isCurrent}
+                onClick={() => setRoomId(r.id)}
+                className={cn(
+                  "flex w-full items-center justify-between gap-3 rounded-lg border px-3 py-2.5 text-left text-sm transition-colors disabled:cursor-default disabled:opacity-60",
+                  roomId === r.id ? "border-primary bg-primary/5 ring-1 ring-primary" : "hover:bg-muted/60",
+                )}
+              >
+                <span className="font-medium">
+                  {r.name}
+                  {isCurrent && <span className="ml-2 text-xs font-normal text-muted-foreground">current room</span>}
+                </span>
+                <span className={cn("text-xs tabular-nums", full ? "text-amber-700 dark:text-amber-400" : "text-muted-foreground")}>
+                  {n}
+                  {r.capacity != null ? ` / ${r.capacity}` : ""} seats used
+                </span>
+              </button>
+            );
+          })}
+        </div>
+        {over > 0 && (
+          <p className="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:bg-amber-500/10 dark:text-amber-200">
+            {target?.name} would be {over} over its {target?.capacity} seats. You can still move them.
+          </p>
+        )}
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onDone(false)}>
+            Cancel
+          </Button>
+          <Button
+            disabled={!target}
+            onClick={async () => {
+              if (!target) return;
+              onDone(await run(() => moveCandidatesToRoom(data.cycle.id, ids, target.id), `${name} moved to ${target.name}`));
+            }}
+          >
+            <ArrowRightLeft /> Move to {target?.name ?? "room"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/**
+ * Confirms removing candidates (all, or the selected ones). Says exactly what
+ * goes with them: imported sheets and manual scores. Removing everyone needs
+ * the word REMOVE typed in, so it can't happen by a stray click.
+ */
+function RemoveDialog({ data, which, run, onDone }: { data: ExamData; which: "all" | string[]; run: Run; onDone: (removed: boolean) => void }) {
+  const [confirm, setConfirm] = useState("");
+  const all = which === "all";
+  const ids = new Set(all ? data.candidates.map((c) => c.id) : which);
+  const count = ids.size;
+  const withSheets = new Set(data.sheets.filter((s) => ids.has(s.candidate_id)).map((s) => s.candidate_id)).size;
+  const sheets = data.sheets.filter((s) => ids.has(s.candidate_id)).length;
+  const manual = (data.overrides ?? []).filter((o) => ids.has(o.candidate_id)).length;
+  const linked = data.candidates.filter((c) => ids.has(c.id) && c.student_id).length;
+  const ok = !all || confirm.trim().toUpperCase() === "REMOVE";
+
+  return (
+    <Dialog open onOpenChange={(o) => !o && onDone(false)}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>{all ? `Remove all ${count} candidates?` : `Remove ${count} candidate${count === 1 ? "" : "s"}?`}</DialogTitle>
+          <DialogDescription>This can&apos;t be undone.</DialogDescription>
+        </DialogHeader>
+        <ul className="space-y-1.5 rounded-lg border bg-muted/30 p-3 text-sm">
+          <li>
+            <strong>{count}</strong> candidate{count === 1 ? "" : "s"} (exam numbers, names, details, center assignments)
+          </li>
+          <li className={sheets ? "text-rose-700 dark:text-rose-400" : "text-muted-foreground"}>
+            <strong>{sheets}</strong> imported exam sheet{sheets === 1 ? "" : "s"}
+            {withSheets ? ` (results of ${withSheets} candidate${withSheets === 1 ? "" : "s"})` : ""}
+          </li>
+          {manual > 0 && (
+            <li className="text-rose-700 dark:text-rose-400">
+              <strong>{manual}</strong> manual score{manual === 1 ? "" : "s"}
+            </li>
+          )}
+          <li className="text-muted-foreground">
+            Kept: papers, answer keys, pass marks, exam centers{linked ? `, and the ${linked} linked student record${linked === 1 ? "" : "s"}` : ""}.
+          </li>
+        </ul>
+        {all && (
+          <div className="space-y-1">
+            <label htmlFor="remove-confirm" className="text-sm">
+              Type <strong>REMOVE</strong> to confirm
+            </label>
+            <Input id="remove-confirm" value={confirm} onChange={(e) => setConfirm(e.target.value)} autoComplete="off" />
+          </div>
+        )}
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onDone(false)}>
+            Cancel
+          </Button>
+          <Button
+            variant="destructive"
+            disabled={!ok}
+            onClick={async () => {
+              const done = await run(
+                () => removeCandidates(data.cycle.id, all ? "all" : [...ids]),
+                (r) => `${r.candidates} candidate${r.candidates === 1 ? "" : "s"} removed${r.sheets ? `, with ${r.sheets} exam sheet${r.sheets === 1 ? "" : "s"}` : ""}`,
+              );
+              onDone(done);
+            }}
+          >
+            <Trash2 /> {all ? "Remove all" : `Remove ${count}`}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 

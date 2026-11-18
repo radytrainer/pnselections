@@ -8,7 +8,12 @@
  */
 import type { ExamData } from "@/features/written-exam/scoring";
 import { examCenterStats, examResultStats } from "@/features/written-exam/stats";
-import { getSelectionProcessStats, saveExamCenterStats, saveExamResultStats } from "@/services/selectionProcessService";
+import {
+  getSelectionProcessStats,
+  saveExamCenterStats,
+  saveExamResultStats,
+  saveInterviewCenterStats,
+} from "@/services/selectionProcessService";
 
 const differs = (next: Record<string, number>, saved: Record<string, unknown> | null) =>
   !saved || Object.entries(next).some(([k, v]) => Number(saved[k] ?? 0) !== v);
@@ -26,6 +31,15 @@ export async function syncSelectionProcess(data: ExamData): Promise<boolean> {
   if (differs(results, saved.examResults as Record<string, unknown> | null)) {
     await saveExamResultStats(data.cycle.id, results);
     changed = true;
+  }
+  // Motivation Interview step: everyone who passed the exam is eligible (only this field; the
+  // interview team keeps filling in the rest of the Interview Centers card).
+  if (data.rules.length) {
+    const eligible = { applicants_eligible: results.passed };
+    if (differs(eligible, saved.interviewCenters as Record<string, unknown> | null)) {
+      await saveInterviewCenterStats(data.cycle.id, eligible);
+      changed = true;
+    }
   }
   return changed;
 }

@@ -1,7 +1,8 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { Building2, CalendarDays, ClipboardCheck, GraduationCap, Mic, type LucideIcon } from "lucide-react";
+import Link from "next/link";
+import { ArrowRight, Building2, CalendarDays, ClipboardCheck, GraduationCap, Mic, type LucideIcon } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { StatsEditDialog, type StatsFieldGroup } from "@/components/selection-process/StatsEditDialog";
@@ -528,6 +529,17 @@ export function InterviewCentersCard({ stats, cycleId, canEdit, onSaved }: CardP
           <Metric value={s.sessions_not_done} label="Not done" tone={s.sessions_not_done > 0 ? "warning" : "default"} />
         </div>
         <RateBar label="Sessions completed" value={s.sessions_done} total={s.sessions_done + s.sessions_not_done} />
+      </section>
+      <section className="space-y-3">
+        <BlockHeading>Passers ready for the interview</BlockHeading>
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <Metric value={s.applicants_eligible} label="Eligible for interview (passed the written exam)" tone="success" emphasis />
+          {s.applicants_eligible > 0 && (
+            <Link href="/students?status=exam_completed" className="inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline">
+              View students ready for interview <ArrowRight className="size-4" />
+            </Link>
+          )}
+        </div>
       </section>
       <section className="space-y-3">
         <BlockHeading aside={`${formatNumber(s.applicants_eligible)} eligible`}>Readiness</BlockHeading>

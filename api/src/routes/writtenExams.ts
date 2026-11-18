@@ -543,6 +543,27 @@ writtenExamsRouter.delete("/written-exams/candidates/:id", async (req, res) => {
   res.json({ ok: true });
 });
 
+/**
+ * Removes several candidates, or all of a cycle's candidates, together with
+ * their imported sheets and manual scores (cascade). Linked student records
+ * aren't touched. Papers, keys, pass marks and exam centers stay.
+ */
+writtenExamsRouter.post("/written-exams/candidates/remove", async (req, res) => {
+  const input = z
+    .object({ cycleId: uuid, all: z.literal(true).optional(), candidateIds: z.array(uuid).max(10000).optional() })
+    .refine((v) => v.all || v.candidateIds?.length, "Choose candidates to remove")
+    .parse(req.body);
+  const result = await asUser(req, async (db) => {
+    await assertUnlocked(db, input.cycleId);
+    const where = input.all ? "c.cycle_id = $1" : "c.cycle_id = $1 and c.id = any($2::uuid[])";
+    const params = input.all ? [input.cycleId] : [input.cycleId, input.candidateIds];
+    const sheets = (await db.value<number>(`select count(*)::int from exam_sheets s join exam_candidates c on c.id = s.candidate_id where ${where}`, params)) ?? 0;
+    const r = await db.exec(`delete from exam_candidates c where ${where}`, params);
+    return { candidates: r.rowCount ?? 0, sheets };
+  });
+  res.json(result);
+});
+
 /** Next free exam numbers for a cycle: after the highest existing number, never below `start`. */
 async function nextNumbers(db: Db, cycleId: string, count: number, start?: number, digits?: number) {
   const max = (await db.value<number>(
@@ -675,6 +696,27 @@ writtenExamsRouter.post("/written-exams/candidates/assign", async (req, res) => 
     );
   });
   res.json({ ok: true });
+});
+
+/** Moves candidates to another room of the same exam center; their center and session stay. */
+writtenExamsRouter.post("/written-exams/candidates/move-room", async (req, res) => {
+  const input = z.object({ cycleId: uuid, candidateIds: z.array(uuid).min(1).max(5000), roomId: uuid }).parse(req.body);
+  const moved = await asUser(req, async (db) => {
+    await assertUnlocked(db, input.cycleId);
+    const centerId = await db.value<string>(
+      "select r.center_id from exam_rooms r join exam_centers c on c.id = r.center_id where r.id = $1 and c.cycle_id = $2",
+      [input.roomId, input.cycleId],
+    );
+    if (!centerId) throw notFound("Room");
+    const elsewhere = await db.value<number>(
+      "select count(*)::int from exam_candidates where cycle_id = $1 and id = any($2::uuid[]) and center_id is distinct from $3",
+      [input.cycleId, input.candidateIds, centerId],
+    );
+    if (elsewhere) throw badRequest("Some of these candidates are at another exam center; use “Assign to center” for them");
+    const r = await db.exec("update exam_candidates set room_id = $3 where cycle_id = $1 and id = any($2::uuid[])", [input.cycleId, input.candidateIds, input.roomId]);
+    return r.rowCount ?? 0;
+  });
+  res.json({ moved });
 });
 
 // ---------------------------------------------------------------------------
@@ -888,8 +930,15 @@ writtenExamsRouter.post("/written-exams/create-students", async (req, res) => {
       [`${prefix}%`],
     );
     let seq = last ? Number(last.slice(prefix.length)) || 0 : 0;
-    const candidates = await db.rows<{ id: string; full_name: string | null; gender: string | null }>(
-      "select id, full_name, gender from exam_candidates where cycle_id = $1 and id = any($2::uuid[]) and student_id is null",
+    const candidates = await db.rows<{
+      id: string;
+      full_name: string | null;
+      gender: string | null;
+      first_name: string | null;
+      last_name: string | null;
+      dob: string | null;
+    }>(
+      "select id, full_name, gender, first_name, last_name, dob::text from exam_candidates where cycle_id = $1 and id = any($2::uuid[]) and student_id is null",
       [input.cycleId, input.candidateIds],
     );
     let created = 0;
@@ -900,6 +949,7 @@ writtenExamsRouter.post("/written-exams/create-students", async (req, res) => {
         skipped.push(c.id);
         continue;
       }
+      // Prefer the separate first/last names from the candidate list; else split the full name.
       const [first, ...rest] = name.split(" ");
       const student = await insertRow(
         db,
@@ -907,9 +957,11 @@ writtenExamsRouter.post("/written-exams/create-students", async (req, res) => {
         {
           cycle_id: input.cycleId,
           student_code: `${prefix}${String(++seq).padStart(4, "0")}`,
-          first_name: first,
-          last_name: rest.join(" "),
+          first_name: c.first_name?.trim() || first,
+          last_name: c.first_name?.trim() ? (c.last_name?.trim() ?? "") : rest.join(" "),
           gender: c.gender,
+          dob: c.dob,
+          // "Exam done" = passed the written exam, waiting for the Motivation Interview.
           status: "exam_completed",
         },
         { returning: true },

@@ -1,9 +1,10 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { toast } from "sonner";
-import { BarChart3, UserCheck, UserPlus } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { ArrowRight, BarChart3, Mic } from "lucide-react";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Dialog,
@@ -19,22 +20,29 @@ import { applyToStudents, createStudentsFromCandidates } from "@/services/writte
 import { saveExamCenterStats, saveExamResultStats } from "@/services/selectionProcessService";
 
 /**
- * Phase 3: carry the exam outcome into the rest of the app — student
- * statuses, new student records for passers, and the Selection Process numbers.
+ * After the results: move the passers on to the Motivation Interview step
+ * (student records at status "Exam done" = waiting for their interview), mark
+ * linked candidates who didn't pass as eliminated, and keep the Selection
+ * Process numbers in step.
  */
 export function NextSteps({ data, results, reload }: { data: ExamData; results: CandidateResult[]; reload: () => Promise<void> }) {
-  const [dialog, setDialog] = useState<null | "status" | "create" | "stats">(null);
+  const [dialog, setDialog] = useState<null | "move" | "stats">(null);
   const [busy, setBusy] = useState(false);
 
   // Only candidates who actually sat something count as "not passed" for students.
   const sat = (r: CandidateResult) => Object.keys(r.scores).length > 0;
-  const linked = results.filter((r) => r.candidate.student);
-  const toAdvance = linked.filter((r) => r.passed && r.candidate.student!.status === "registered");
-  const toEliminate = linked.filter(
-    (r) => !r.passed && !r.candidate.excluded && sat(r) && ["registered", "exam_completed"].includes(r.candidate.student!.status),
+  const passers = results.filter((r) => r.passed);
+  const linkedPassers = passers.filter((r) => r.candidate.student);
+  const toAdvance = linkedPassers.filter((r) => r.candidate.student!.status === "registered");
+  const alreadyThere = linkedPassers.length - toAdvance.length;
+  const unlinkedPassers = passers.filter((r) => !r.candidate.student_id);
+  const toCreate = unlinkedPassers.filter((r) => r.candidate.full_name?.trim() && candidateGender(r.candidate));
+  const cantCreate = unlinkedPassers.filter((r) => !toCreate.includes(r));
+  const toEliminate = results.filter(
+    (r) => r.candidate.student && !r.passed && !r.candidate.excluded && sat(r) && ["registered", "exam_completed"].includes(r.candidate.student.status),
   );
-  const unlinkedPassers = results.filter((r) => r.passed && !r.candidate.student_id);
-  const creatable = unlinkedPassers.filter((r) => r.candidate.full_name && candidateGender(r.candidate));
+  const ready = alreadyThere; // passers already at the interview step
+  const willMove = toAdvance.length + toCreate.length;
   const centerStats = examCenterStats(data);
   const resultStats = examResultStats(data);
 
@@ -56,108 +64,134 @@ export function NextSteps({ data, results, reload }: { data: ExamData; results: 
     }
   }
 
+  async function movePassers() {
+    let created = 0;
+    if (toCreate.length) created = (await createStudentsFromCandidates(data.cycle.id, toCreate.map((r) => r.candidate.id))).created;
+    let advanced = 0;
+    let eliminated = 0;
+    if (toAdvance.length || toEliminate.length) {
+      const r = await applyToStudents(
+        data.cycle.id,
+        toAdvance.map((x) => x.candidate.id),
+        toEliminate.map((x) => ({ candidateId: x.candidate.id, reason: reason(x) })),
+      );
+      advanced = r.advanced;
+      eliminated = r.eliminated;
+    }
+    return [
+      `${created + advanced} passer${created + advanced === 1 ? "" : "s"} moved to Motivation Interview`,
+      created ? `${created} new student record${created === 1 ? "" : "s"}` : "",
+      eliminated ? `${eliminated} marked eliminated` : "",
+    ]
+      .filter(Boolean)
+      .join(" · ");
+  }
+
   const noRules = data.rules.length === 0;
   return (
     <Card>
       <CardHeader>
         <CardTitle>Next steps</CardTitle>
-        <CardDescription>Carry the exam results into student records and the Selection Process page. Each step shows what will change before it runs.</CardDescription>
+        <CardDescription>Move the passers on to the Motivation Interview and keep the Selection Process page up to date.</CardDescription>
       </CardHeader>
-      <CardContent className="grid gap-3 md:grid-cols-3">
-        <Step
-          icon={UserCheck}
-          title="Update student statuses"
-          text={noRules ? "Set pass rules first." : `${toAdvance.length} to mark exam completed · ${toEliminate.length} to mark eliminated`}
-          action="Review…"
-          disabled={noRules || (!toAdvance.length && !toEliminate.length)}
-          onClick={() => setDialog("status")}
-        />
-        <Step
-          icon={UserPlus}
-          title="Create students for passers"
-          text={noRules ? "Set pass rules first." : `${unlinkedPassers.length} passers aren't students yet · ${creatable.length} have a name and gender`}
-          action="Review…"
-          disabled={noRules || !creatable.length}
-          onClick={() => setDialog("create")}
-        />
-        <Step
-          icon={BarChart3}
-          title="Selection Process numbers"
-          text={`Updated automatically after each change · ${resultStats.passed} passed · ${resultStats.failed} failed`}
-          action="Check / update now…"
-          onClick={() => setDialog("stats")}
-        />
+      <CardContent className="grid gap-3 md:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+        {/* Main action */}
+        <div className="flex flex-col gap-3 rounded-lg border border-primary/30 bg-primary/[0.03] p-4">
+          <p className="flex items-center gap-2 font-medium">
+            <span className="flex size-7 items-center justify-center rounded-md bg-primary text-primary-foreground">
+              <Mic className="size-4" />
+            </span>
+            Move passers to Motivation Interview
+          </p>
+          {noRules ? (
+            <p className="text-sm text-muted-foreground">Set pass marks first.</p>
+          ) : (
+            <ul className="grid gap-1 text-sm sm:grid-cols-2">
+              <li>
+                <strong className="tabular-nums">{passers.length}</strong> passed the exam
+              </li>
+              <li>
+                <strong className="tabular-nums">{ready}</strong> already at the interview step
+              </li>
+              <li>
+                <strong className="tabular-nums">{willMove}</strong> to move now
+                {toCreate.length ? <span className="text-muted-foreground"> ({toCreate.length} new student records)</span> : ""}
+              </li>
+              {cantCreate.length > 0 && (
+                <li className="text-amber-700 dark:text-amber-400">
+                  <strong className="tabular-nums">{cantCreate.length}</strong> need a name and gender first
+                </li>
+              )}
+            </ul>
+          )}
+          <div className="flex flex-wrap items-center gap-2">
+            <Button disabled={noRules || (!willMove && !toEliminate.length)} onClick={() => setDialog("move")}>
+              <ArrowRight /> {willMove ? `Move ${willMove} passer${willMove === 1 ? "" : "s"}…` : "Nothing to move"}
+            </Button>
+            {passers.length > 0 && (
+              <Link href="/selection-process" className={buttonVariants({ variant: "ghost", size: "sm" })}>
+                See them on Selection Process <ArrowRight />
+              </Link>
+            )}
+          </div>
+        </div>
+
+        <div className="flex flex-col gap-2 rounded-lg border p-4">
+          <p className="flex items-center gap-2 text-sm font-medium">
+            <BarChart3 className="size-4 text-primary" /> Selection Process numbers
+          </p>
+          <p className="flex-1 text-xs text-muted-foreground">
+            Updated automatically after each change · {resultStats.passed} passed · {resultStats.failed} failed · {resultStats.passed} eligible for interview
+          </p>
+          <Button variant="outline" size="sm" className="self-start" onClick={() => setDialog("stats")}>
+            Check / update now…
+          </Button>
+        </div>
       </CardContent>
 
-      <Dialog open={dialog === "status"} onOpenChange={(o) => !o && setDialog(null)}>
+      <Dialog open={dialog === "move"} onOpenChange={(o) => !o && setDialog(null)}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Update student statuses?</DialogTitle>
-            <DialogDescription>Only students linked to a candidate change. Students already past the exam stage are left alone.</DialogDescription>
-          </DialogHeader>
-          <ul className="space-y-1 text-sm">
-            <li>
-              <strong>{toAdvance.length}</strong> passers: Registered → <strong>Exam completed</strong>
-            </li>
-            <li>
-              <strong>{toEliminate.length}</strong> who didn&apos;t pass: → <strong>Eliminated</strong>, with the rule they didn&apos;t pass as the reason
-            </li>
-          </ul>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDialog(null)}>
-              Cancel
-            </Button>
-            <Button
-              disabled={busy}
-              onClick={() =>
-                run(async () => {
-                  const r = await applyToStudents(
-                    data.cycle.id,
-                    toAdvance.map((x) => x.candidate.id),
-                    toEliminate.map((x) => ({ candidateId: x.candidate.id, reason: reason(x) })),
-                  );
-                  return `${r.advanced} marked exam completed, ${r.eliminated} marked eliminated${r.unchanged ? `, ${r.unchanged} unchanged` : ""}`;
-                })
-              }
-            >
-              Update {toAdvance.length + toEliminate.length} students
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={dialog === "create"} onOpenChange={(o) => !o && setDialog(null)}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Create {creatable.length} student records?</DialogTitle>
+            <DialogTitle>Move passers to Motivation Interview?</DialogTitle>
             <DialogDescription>
-              Each passer becomes a student with status Exam completed, a new student code, and a link to their exam result. Their other details
-              can be filled in later from the Students page.
+              Each passer becomes a student at <strong>Exam done</strong>, which means waiting for their interview. They then appear in Students and
+              Field Mode, ready for the interview.
             </DialogDescription>
           </DialogHeader>
-          {unlinkedPassers.length > creatable.length && (
+          <ul className="space-y-1.5 rounded-lg border bg-muted/30 p-3 text-sm">
+            <li>
+              <strong>{toAdvance.length}</strong> linked student{toAdvance.length === 1 ? "" : "s"}: Registered → <strong>Exam done</strong>
+            </li>
+            <li>
+              <strong>{toCreate.length}</strong> new student record{toCreate.length === 1 ? "" : "s"} for passers who aren&apos;t students yet (status Exam done,
+              linked to their result)
+            </li>
+            {toEliminate.length > 0 && (
+              <li>
+                <strong>{toEliminate.length}</strong> linked student{toEliminate.length === 1 ? "" : "s"} who didn&apos;t pass → <strong>Eliminated</strong>, with
+                the reason
+              </li>
+            )}
+            {ready > 0 && <li className="text-muted-foreground">{ready} passers are already at the interview step or beyond: not changed.</li>}
+          </ul>
+          {cantCreate.length > 0 && (
             <p className="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:bg-amber-500/10 dark:text-amber-200">
-              {unlinkedPassers.length - creatable.length} passer{unlinkedPassers.length - creatable.length === 1 ? "" : "s"} have no gender or name yet and
-              will be skipped. Set it on the Candidates tab (edit the candidate).
+              {cantCreate.length} passer{cantCreate.length === 1 ? " has" : "s have"} no name or gender yet ({cantCreate
+                .slice(0, 6)
+                .map((r) => r.candidate.exam_number)
+                .join(", ")}
+              {cantCreate.length > 6 ? "…" : ""}) and will be skipped. Import the candidate list or edit them on the Candidates tab, then move them.
             </p>
           )}
           <p className="text-xs text-muted-foreground">
-            If some of them already exist as students, link them on the Candidates tab first (“Link by name” or edit a candidate) to avoid duplicates.
+            If some passers already exist as students, link them on the Candidates tab first (“Link by name” or edit) so no duplicate is created.
           </p>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDialog(null)}>
               Cancel
             </Button>
-            <Button
-              disabled={busy}
-              onClick={() =>
-                run(async () => {
-                  const r = await createStudentsFromCandidates(data.cycle.id, creatable.map((x) => x.candidate.id));
-                  return `${r.created} student records created${r.skipped ? `, ${r.skipped} skipped` : ""}`;
-                })
-              }
-            >
-              Create {creatable.length}
+            <Button disabled={busy} onClick={() => run(movePassers)}>
+              <ArrowRight /> Move {willMove} passer{willMove === 1 ? "" : "s"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -168,8 +202,8 @@ export function NextSteps({ data, results, reload }: { data: ExamData; results: 
           <DialogHeader>
             <DialogTitle>Fill the Selection Process exam numbers?</DialogTitle>
             <DialogDescription>
-              These numbers are written to the Exam Centers and Exam Results cards automatically whenever the results change; use this to update them right now. Fields the exam module doesn&apos;t know
-              (like information sessions not linked) are left as they are.
+              These numbers are written to the Selection Process page automatically whenever the results change; use this to update them right now.
+              Fields the exam module doesn&apos;t know are left as they are.
             </DialogDescription>
           </DialogHeader>
           <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-sm">
@@ -184,6 +218,7 @@ export function NextSteps({ data, results, reload }: { data: ExamData; results: 
             <Row k="Still to be done" v={resultStats.still_to_be_done} />
             <Row k="Passed (girls / boys)" v={`${resultStats.passed} (${resultStats.passed_girls} / ${resultStats.passed_boys})`} />
             <Row k="Failed (girls / boys)" v={`${resultStats.failed} (${resultStats.failed_girls} / ${resultStats.failed_boys})`} />
+            <Row k="Eligible for interview" v={resultStats.passed} />
           </div>
           {resultStats.passed_girls + resultStats.passed_boys < resultStats.passed && (
             <p className="text-xs text-muted-foreground">
@@ -210,20 +245,6 @@ export function NextSteps({ data, results, reload }: { data: ExamData; results: 
         </DialogContent>
       </Dialog>
     </Card>
-  );
-}
-
-function Step({ icon: Icon, title, text, action, disabled, onClick }: { icon: typeof UserCheck; title: string; text: string; action: string; disabled?: boolean; onClick: () => void }) {
-  return (
-    <div className="flex flex-col gap-2 rounded-lg border p-3">
-      <p className="flex items-center gap-2 text-sm font-medium">
-        <Icon className="size-4 text-primary" /> {title}
-      </p>
-      <p className="flex-1 text-xs text-muted-foreground">{text}</p>
-      <Button variant="outline" size="sm" className="self-start" disabled={disabled} onClick={onClick}>
-        {action}
-      </Button>
-    </div>
   );
 }
 
