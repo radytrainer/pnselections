@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { getPublicForm, submitPublicRegistration, type PublicForm, type PublicRegistration } from "@/services/informationSessionService";
 import { cn } from "@/lib/utils";
+import { ageOn, dobLimits, formatKhmerMobile, khmerMobile, MAX_AGE, MIN_AGE } from "@/features/info-sessions/rules";
 
 /**
  * Public self-registration form for an information session (migration 0061).
@@ -34,6 +35,9 @@ const REASONS: Record<string, string> = {
   gender_required: "Please choose your gender. · សូមជ្រើសរើសភេទ។",
   bad_dob: "Please check your date of birth. · សូមពិនិត្យថ្ងៃខែឆ្នាំកំណើត។",
   dob_required: "Please enter your date of birth. · សូមបញ្ចូលថ្ងៃខែឆ្នាំកំណើត។",
+  age: `Only students aged ${MIN_AGE} to ${MAX_AGE} can register. · មានតែសិស្សអាយុពី ${MIN_AGE} ដល់ ${MAX_AGE} ឆ្នាំប៉ុណ្ណោះដែលអាចចុះឈ្មោះបាន។`,
+  phone_required: "Please enter your phone number. · សូមបញ្ចូលលេខទូរស័ព្ទ។",
+  bad_phone: "Please enter a Smart, Cellcard or Metfone number, e.g. 012 345 678. · សូមបញ្ចូលលេខទូរស័ព្ទ Smart, Cellcard ឬ Metfone។",
   center_required: "Please choose your exam center. · សូមជ្រើសរើសមណ្ឌលប្រឡង។",
   bad_choice: "Please choose again from the list. · សូមជ្រើសរើសម្តងទៀត។",
   too_many: "Too many registrations from this device. Please wait a few minutes. · សូមរង់ចាំបន្តិច។",
@@ -95,7 +99,10 @@ export default function RegisterPage() {
       .catch((e) => setLoadError(e instanceof Error ? e.message : "Couldn't load the form"));
   }, [token]);
 
-  const set = (k: keyof PublicRegistration) => (e: { target: { value: string } }) => setValues((v) => ({ ...v, [k]: e.target.value }));
+  const set = (k: keyof PublicRegistration) => (e: { target: { value: string } }) => {
+    setValues((v) => ({ ...v, [k]: e.target.value }));
+    setError(null);
+  };
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -103,6 +110,10 @@ export default function RegisterPage() {
     if (!values.firstName.trim() || !values.lastName.trim()) return setError(REASONS.name_required);
     if (!values.gender) return setError(REASONS.gender_required);
     if (!values.dob) return setError(REASONS.dob_required);
+    const age = ageOn(values.dob);
+    if (age < MIN_AGE || age > MAX_AGE) return setError(REASONS.age);
+    if (!values.phone.trim()) return setError(REASONS.phone_required);
+    if (!khmerMobile(values.phone)) return setError(REASONS.bad_phone);
     if (form?.status === "open" && form.centers.length > 0 && !values.examCenterId) return setError(REASONS.center_required);
     setSending(true);
     try {
@@ -137,6 +148,11 @@ export default function RegisterPage() {
   if (form.status === "expired") return <Shell><Notice icon={<TimerOff className="size-6 text-muted-foreground" />} title={form.session.name || "Link expired"} text={REASONS.expired} /></Shell>;
 
   const s = form.session;
+  const limits = dobLimits();
+  const dobAge = values.dob ? ageOn(values.dob) : null;
+  const phone = values.phone.trim() ? khmerMobile(values.phone) : null;
+  // Only complain once enough digits are typed.
+  const phoneBad = !phone && values.phone.replace(/\D/g, "").length >= 9;
   if (done) {
     return (
       <Shell>
@@ -240,11 +256,33 @@ export default function RegisterPage() {
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-1.5">
               <Label htmlFor="r-dob" km="ថ្ងៃខែឆ្នាំកំណើត" en="Date of birth" required />
-              <Input id="r-dob" type="date" value={values.dob} onChange={set("dob")} max={new Date().toISOString().slice(0, 10)} className="h-10" />
+              <Input id="r-dob" type="date" value={values.dob} onChange={set("dob")} min={limits.min} max={limits.max} className="h-10" aria-describedby="r-dob-hint" />
+              <p id="r-dob-hint" className={cn("text-xs", dobAge !== null && (dobAge < MIN_AGE || dobAge > MAX_AGE) ? "text-rose-600" : "text-muted-foreground")}>
+                {dobAge === null
+                  ? `Age ${MIN_AGE}–${MAX_AGE} · អាយុ ${MIN_AGE}–${MAX_AGE} ឆ្នាំ`
+                  : dobAge < MIN_AGE || dobAge > MAX_AGE
+                    ? `Age ${dobAge} — only ${MIN_AGE} to ${MAX_AGE} can register`
+                    : `Age ${dobAge} · អាយុ ${dobAge} ឆ្នាំ`}
+              </p>
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="r-phone" km="លេខទូរស័ព្ទ" en="Phone" />
-              <Input id="r-phone" type="tel" inputMode="tel" autoComplete="tel" value={values.phone} onChange={set("phone")} maxLength={30} className="h-10" />
+              <Label htmlFor="r-phone" km="លេខទូរស័ព្ទ" en="Phone" required />
+              <Input
+                id="r-phone"
+                type="tel"
+                inputMode="tel"
+                autoComplete="tel"
+                placeholder="012 345 678"
+                value={values.phone}
+                onChange={set("phone")}
+                maxLength={20}
+                className="h-10"
+                aria-describedby="r-phone-hint"
+                aria-invalid={phoneBad || undefined}
+              />
+              <p id="r-phone-hint" className={cn("text-xs", phoneBad ? "text-rose-600" : phone ? "text-emerald-700 dark:text-emerald-400" : "text-muted-foreground")}>
+                {phone ? `✓ ${phone.operator} · ${formatKhmerMobile(phone.number)}` : phoneBad ? "Not a Smart, Cellcard or Metfone number" : "Smart, Cellcard or Metfone"}
+              </p>
             </div>
           </div>
           <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_7rem]">
