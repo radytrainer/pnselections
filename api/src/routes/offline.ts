@@ -27,7 +27,8 @@ offlineRouter.get("/bundle", async (req, res) => {
              (select row_to_json(iv) from interviews iv where iv.student_id = s.id) as interviews,
              ${toMany("social_assessments", "sa", "*", "sa.student_id = s.id", "social_assessments")},
              ${toMany("student_documents", "d", ["doc_type", "file_path", "uploaded_at"], "d.student_id = s.id", "student_documents")},
-             (select row_to_json(cd) from committee_decisions cd where cd.student_id = s.id) as committee_decisions
+             (select row_to_json(cd) from committee_decisions cd where cd.student_id = s.id) as committee_decisions,
+             student_exam_center_name(s.id) as exam_center_name
            from students s
            where s.deleted_at is null and s.cycle_id = $1
            order by s.first_name, s.last_name`,

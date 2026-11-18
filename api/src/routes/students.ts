@@ -20,7 +20,8 @@ function listSelect(visitorParam?: string) {
     ${toOne("committee_decisions", "cd", ["decision", "poor_level"], "cd.student_id = s.id", "committee_decisions")},
     ${toMany("social_assessments", "sa", ["visitor_id", "visitor_name", "visit_number"], `sa.student_id = s.id${visitorFilter}`, "social_assessments")},
     ${DOCUMENTS},
-    (select ic.name from interview_centers ic where ic.id = s.interview_center_id) as interview_center_name`;
+    (select ic.name from interview_centers ic where ic.id = s.interview_center_id) as interview_center_name,
+    student_exam_center_id(s.id) as exam_center_id, student_exam_center_name(s.id) as exam_center_name`;
 }
 
 type ListFilters = {
@@ -35,6 +36,8 @@ type ListFilters = {
   hideOut?: boolean;
   /** An interview center id, or "__none__" for students without one. */
   interviewCenterId?: string;
+  /** The written-exam center (via the linked exam candidate, migration 0060), or "__none__". */
+  examCenterId?: string;
 };
 
 function readFilters(req: Request): ListFilters {
@@ -49,6 +52,7 @@ function readFilters(req: Request): ListFilters {
     search: qs(req, "search"),
     hideOut: qs(req, "hideOut") === "1",
     interviewCenterId: qs(req, "interviewCenterId"),
+    examCenterId: qs(req, "examCenterId"),
   };
 }
 
@@ -61,6 +65,8 @@ function filterConditions(filters: ListFilters, params: Params, { includeGender 
   if (filters.status) where.push(`s.status = ${params.add(filters.status)}`);
   if (filters.interviewCenterId === "__none__") where.push("s.interview_center_id is null");
   else if (filters.interviewCenterId && isUuid(filters.interviewCenterId)) where.push(`s.interview_center_id = ${params.add(filters.interviewCenterId)}`);
+  if (filters.examCenterId === "__none__") where.push("student_exam_center_id(s.id) is null");
+  else if (filters.examCenterId && isUuid(filters.examCenterId)) where.push(`student_exam_center_id(s.id) = ${params.add(filters.examCenterId)}`);
   // Same rule as lib/constants isOutOfProcess.
   if (filters.hideOut && filters.status !== "eliminated") {
     where.push("not (s.status = 'eliminated' and (s.elimination_reason like 'Did not pass the written exam%' or s.elimination_reason = 'Did not pass the Motivation Interview'))");
@@ -107,6 +113,13 @@ studentsRouter.get("/", async (req, res) => {
   });
 
   res.json({ ...result, page, pageSize });
+});
+
+/** The cycle's written-exam centers with their linked students — the Students list filter. */
+studentsRouter.get("/exam-centers", async (req, res) => {
+  const cycleId = qs(req, "cycleId");
+  if (!cycleId || !isUuid(cycleId)) throw badRequest("cycleId is required");
+  res.json(await asUser(req, (db) => db.rows("select * from exam_centers_for_students($1)", [cycleId])));
 });
 
 studentsRouter.get("/gender-counts", async (req, res) => {

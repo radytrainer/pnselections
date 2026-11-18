@@ -9,6 +9,9 @@ export type StudentUpdate = Database["public"]["Tables"]["students"]["Update"];
 export type StudentListItem = Student & {
   /** Name of the student's interview center (migration 0058), if assigned. */
   interview_center_name?: string | null;
+  /** Written-exam center, from the linked exam candidate (migration 0060). */
+  exam_center_id?: string | null;
+  exam_center_name?: string | null;
   provinces: { name_en: string } | null;
   school_partners: { school_name: string } | null;
   ngo_partners: { organization_name: string } | null;
@@ -68,6 +71,8 @@ export type StudentFilters = {
   hideOut?: boolean;
   /** An interview center id, or "__none__" for students without one. */
   interviewCenterId?: string;
+  /** A written-exam center id, or "__none__" for students without one. */
+  examCenterId?: string;
   page?: number;
   pageSize?: number;
 };
@@ -83,7 +88,15 @@ function filterQuery(filters: Omit<StudentFilters, "page" | "pageSize">) {
     search: filters.search,
     hideOut: filters.hideOut ? "1" : undefined,
     interviewCenterId: filters.interviewCenterId,
+    examCenterId: filters.examCenterId,
   };
+}
+
+export type StudentExamCenter = { id: string; name: string; students: number };
+
+/** The cycle's written-exam centers with how many students each has (Students filter). */
+export function listStudentExamCenters(cycleId: string) {
+  return api.get<StudentExamCenter[]>("/api/v1/students/exam-centers", { cycleId });
 }
 
 export async function listStudents(filters: StudentFilters) {

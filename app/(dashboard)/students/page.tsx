@@ -5,6 +5,8 @@ import Link from "next/link";
 import { toast } from "sonner";
 import {
   listStudents,
+  listStudentExamCenters,
+  type StudentExamCenter,
   listHomeVisitors,
   getStudentGenderCounts,
   type StudentListItem,
@@ -74,6 +76,20 @@ export default function StudentsPage() {
   const [interviewCenters, setInterviewCenters] = useState<InterviewCenter[]>([]);
   const [interviewCenterId, setInterviewCenterId] = useState("");
   const [centersOpen, setCentersOpen] = useState(false);
+  // Written-exam centers (students keep theirs after the exam, migration 0060).
+  const [examCenters, setExamCenters] = useState<StudentExamCenter[]>([]);
+  const [examCenterId, setExamCenterId] = useState("");
+  useEffect(() => {
+    setExamCenterId("");
+    if (!cycleId) return setExamCenters([]);
+    let stale = false;
+    listStudentExamCenters(cycleId)
+      .then((list) => !stale && setExamCenters(list))
+      .catch(() => !stale && setExamCenters([]));
+    return () => {
+      stale = true;
+    };
+  }, [cycleId]);
   const canManageCenters = can(role, "enterInterviewScores");
   const loadCenters = useCallback(async () => {
     if (!cycleId) return setInterviewCenters([]);
@@ -156,9 +172,9 @@ export default function StudentsPage() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  const activeFilterCount = [search, status, homeVisitor, provinceId, ngoName, interviewCenterId].filter(Boolean).length;
+  const activeFilterCount = [search, status, homeVisitor, provinceId, ngoName, interviewCenterId, examCenterId].filter(Boolean).length;
   /** Dropdown filters only (not the search box) — the badge on the phone/tablet Filters button. */
-  const dropdownFilterCount = [status, homeVisitor, provinceId, ngoName, interviewCenterId].filter(Boolean).length;
+  const dropdownFilterCount = [status, homeVisitor, provinceId, ngoName, interviewCenterId, examCenterId].filter(Boolean).length;
   const [filtersOpen, setFiltersOpen] = useState(false);
 
   function clearFilters() {
@@ -170,6 +186,7 @@ export default function StudentsPage() {
     setProvinceId("");
     setNgoName("");
     setInterviewCenterId("");
+    setExamCenterId("");
   }
 
 
@@ -213,6 +230,7 @@ export default function StudentsPage() {
         ngoIds,
         cycleId: cycleId || undefined,
         interviewCenterId: interviewCenterId || undefined,
+        examCenterId: examCenterId || undefined,
       };
       // Students out of the process (failed the exam/interview) are hidden unless asked for.
       const [result, everyone] = await Promise.all([
@@ -233,7 +251,7 @@ export default function StudentsPage() {
     } finally {
       if (seq === listSeq.current) setLoading(false);
     }
-  }, [page, search, status, homeVisitor, provinceId, ngoIds, cycleId, showOut, interviewCenterId]);
+  }, [page, search, status, homeVisitor, provinceId, ngoIds, cycleId, showOut, interviewCenterId, examCenterId]);
 
   useEffect(() => {
     if (!restored || cyclesLoading) return;
@@ -252,12 +270,13 @@ export default function StudentsPage() {
       cycleId: cycleId || undefined,
       hideOut: !showOut,
       interviewCenterId: interviewCenterId || undefined,
+      examCenterId: examCenterId || undefined,
     })
       .then((counts) => {
         if (seq === countSeq.current) setGenderCounts(counts);
       })
       .catch(() => {});
-  }, [restored, cyclesLoading, search, status, homeVisitor, provinceId, ngoIds, cycleId, showOut, interviewCenterId]);
+  }, [restored, cyclesLoading, search, status, homeVisitor, provinceId, ngoIds, cycleId, showOut, interviewCenterId, examCenterId]);
 
   const selectTriggerClass = "w-full lg:w-44";
 
@@ -514,6 +533,32 @@ export default function StudentsPage() {
               ))}
             </SelectContent>
           </Select>
+          {cycleId && examCenters.length > 0 && (
+            <Select
+              value={examCenterId}
+              onValueChange={(value) => {
+                setPage(1);
+                setExamCenterId(value ?? "");
+              }}
+            >
+              <SelectTrigger className={cn(selectTriggerClass, examCenterId && "border-primary/40 bg-primary/5")} aria-label="Exam center">
+                <SelectValue placeholder="All exam centers">
+                  {(value: string) =>
+                    !value ? "All exam centers" : value === "__none__" ? "No exam center" : (examCenters.find((c) => c.id === value)?.name ?? "All exam centers")
+                  }
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="">All exam centers</SelectItem>
+                {examCenters.map((c) => (
+                  <SelectItem key={c.id} value={c.id}>
+                    {c.name} ({c.students})
+                  </SelectItem>
+                ))}
+                <SelectItem value="__none__">No exam center</SelectItem>
+              </SelectContent>
+            </Select>
+          )}
           {cycleId && (interviewCenters.length > 0 || canManageCenters) && (
             <div className="flex gap-1">
               <Select

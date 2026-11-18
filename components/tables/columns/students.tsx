@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { toast } from "sonner";
 import type { ColumnDef } from "@tanstack/react-table";
-import { Eye, FileDown, Gavel, HeartHandshake, Mic, MoreHorizontal, Pencil, Send, Trash2 } from "lucide-react";
+import { Eye, FileDown, Gavel, HeartHandshake, Mic, School, MoreHorizontal, Pencil, Send, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import {
@@ -337,6 +337,11 @@ export function getStudentColumns(
       cell: ({ row }) => (
         <div className="space-y-0.5">
           <StudentStatusBadge student={row.original} />
+          {row.original.exam_center_name && (
+            <p className="flex items-center gap-1 text-xs text-muted-foreground" title="Exam center">
+              <School className="size-3" /> {row.original.exam_center_name}
+            </p>
+          )}
           {row.original.interview_center_name && (
             <p className="flex items-center gap-1 text-xs text-muted-foreground" title="Interview center">
               <Mic className="size-3" /> {row.original.interview_center_name}
