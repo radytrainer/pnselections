@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import { ArrowRightLeft, ChevronLeft, ChevronRight, Download, FileUp, Link2, Pencil, Search, Trash2, UserPlus, Users, X } from "lucide-react";
+import { ArrowRightLeft, ChevronDown, ChevronLeft, ChevronRight, Download, FileUp, Link2, Pencil, Search, Trash2, UserPlus, Users, X } from "lucide-react";
 import type { ColumnDef, RowSelectionState } from "@tanstack/react-table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -19,6 +19,16 @@ import {
 import { cn } from "@/lib/utils";
 import { ResponsiveDataTable, type ResponsiveColumnMeta } from "@/components/tables/ResponsiveDataTable";
 import { downloadXlsxBook, readSpreadsheet } from "@/components/exams/readSpreadsheet";
+import { downloadZipgradeCsv, sessionFileName } from "@/components/exams/zipgradeExport";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 /** Excel template for "Import list": the columns the importer reads, two examples, and instructions. */
 async function downloadCandidateTemplate() {
@@ -295,45 +305,48 @@ export function CandidatesTab({ data, canEdit, reload }: TabProps) {
             </SelectContent>
           </Select>
         </div>
-        {canEdit && (
-          <div className="flex flex-wrap gap-2">
-            <Button variant="outline" onClick={() => setDialog("add")}>
-              <UserPlus /> Add
-            </Button>
-            <Button variant="outline" onClick={() => setDialog("import")}>
-              <FileUp /> Import list
-            </Button>
-            <Button variant="outline" onClick={() => setDialog("students")}>
-              <Users /> Add from students
-            </Button>
-            <Button
-              variant="outline"
-              disabled={busy}
-              onClick={async () => {
-                setBusy(true);
-                try {
-                  const r = await autoLinkCandidates(data.cycle.id);
-                  toast.success(
-                    `Linked ${r.linked} candidate${r.linked === 1 ? "" : "s"} to students by name` +
-                      (r.ambiguous ? `; ${r.ambiguous} had several possible students and were left for you` : ""),
-                  );
-                  await reload();
-                } catch (e) {
-                  toast.error(e instanceof Error ? e.message : "Linking failed");
-                } finally {
-                  setBusy(false);
-                }
-              }}
-            >
-              <Link2 /> Link by name
-            </Button>
-            {data.candidates.length > 0 && (
-              <Button variant="ghost" className="text-rose-700 hover:bg-rose-50 hover:text-rose-800 dark:text-rose-400 dark:hover:bg-rose-500/10" onClick={() => setRemoving("all")}>
-                <Trash2 /> Remove all
+        <div className="flex flex-wrap gap-2">
+          <ZipgradeExportMenu data={data} centerById={centerById} />
+          {canEdit && (
+            <>
+              <Button variant="outline" onClick={() => setDialog("add")}>
+                <UserPlus /> Add
               </Button>
-            )}
-          </div>
-        )}
+              <Button variant="outline" onClick={() => setDialog("import")}>
+                <FileUp /> Import list
+              </Button>
+              <Button variant="outline" onClick={() => setDialog("students")}>
+                <Users /> Add from students
+              </Button>
+              <Button
+                variant="outline"
+                disabled={busy}
+                onClick={async () => {
+                  setBusy(true);
+                  try {
+                    const r = await autoLinkCandidates(data.cycle.id);
+                    toast.success(
+                      `Linked ${r.linked} candidate${r.linked === 1 ? "" : "s"} to students by name` +
+                        (r.ambiguous ? `; ${r.ambiguous} had several possible students and were left for you` : ""),
+                    );
+                    await reload();
+                  } catch (e) {
+                    toast.error(e instanceof Error ? e.message : "Linking failed");
+                  } finally {
+                    setBusy(false);
+                  }
+                }}
+              >
+                <Link2 /> Link by name
+              </Button>
+              {data.candidates.length > 0 && (
+                <Button variant="ghost" className="text-rose-700 hover:bg-rose-50 hover:text-rose-800 dark:text-rose-400 dark:hover:bg-rose-500/10" onClick={() => setRemoving("all")}>
+                  <Trash2 /> Remove all
+                </Button>
+              )}
+            </>
+          )}
+        </div>
       </div>
 
       <p className="text-sm text-muted-foreground">
@@ -438,6 +451,77 @@ export function CandidatesTab({ data, canEdit, reload }: TabProps) {
 }
 
 type Run = <T>(action: () => Promise<T>, message: string | ((result: T) => string)) => Promise<boolean>;
+
+/**
+ * "ZipGrade CSV": the student list for ZipGrade's Import students — every candidate
+ * in one file, or one file per exam center / session (Class = exam center).
+ */
+function ZipgradeExportMenu({ data, centerById }: { data: ExamData; centerById: Map<string, ExamData["centers"][number]> }) {
+  const total = data.candidates.length;
+  function exportList(fileBase: string, list: ExamCandidate[]) {
+    if (list.length === 0) {
+      toast.error("No candidates in this list");
+      return;
+    }
+    downloadZipgradeCsv(fileBase, list, centerById);
+    toast.success(`Downloaded ${list.length} candidate${list.length === 1 ? "" : "s"} for ZipGrade`);
+  }
+  const centers = data.centers
+    .map((center) => {
+      const inCenter = data.candidates.filter((c) => c.center_id === center.id);
+      const sessions = [...center.sessions]
+        .sort((a, b) => (a.session_date + (a.start_time ?? "")).localeCompare(b.session_date + (b.start_time ?? "")))
+        .map((session) => ({ session, list: inCenter.filter((c) => c.session_id === session.id) }));
+      return { center, inCenter, sessions };
+    })
+    .filter((x) => x.inCenter.length > 0)
+    .sort((a, b) => a.center.name.localeCompare(b.center.name));
+  const unassigned = data.candidates.filter((c) => !c.center_id);
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger render={<Button variant="outline" disabled={total === 0} />}>
+        <Download /> ZipGrade CSV
+        <ChevronDown className="opacity-60" />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="max-h-[70vh] w-80 overflow-y-auto">
+        <DropdownMenuItem onClick={() => exportList(`ZipGrade_${data.cycle.year}_All_centers`, data.candidates)}>
+          <span className="flex-1">All candidates (one file)</span>
+          <span className="text-xs text-muted-foreground tabular-nums">{total}</span>
+        </DropdownMenuItem>
+        {centers.map(({ center, inCenter, sessions }) => (
+          <DropdownMenuGroup key={center.id}>
+            <DropdownMenuSeparator />
+            <DropdownMenuLabel>{center.name}</DropdownMenuLabel>
+            {!sessions.some((x) => x.list.length === inCenter.length) ? (
+              <DropdownMenuItem onClick={() => exportList(sessionFileName(center, null), inCenter)}>
+                <span className="flex-1">Whole center</span>
+                <span className="text-xs text-muted-foreground tabular-nums">{inCenter.length}</span>
+              </DropdownMenuItem>
+            ) : null}
+            {sessions
+              .filter((x) => x.list.length > 0)
+              .map(({ session, list }) => (
+                <DropdownMenuItem key={session.id} onClick={() => exportList(sessionFileName(center, session), list)}>
+                  <span className="min-w-0 flex-1 truncate">{sessionLabel(session)}</span>
+                  <span className="text-xs text-muted-foreground tabular-nums">{list.length}</span>
+                </DropdownMenuItem>
+              ))}
+          </DropdownMenuGroup>
+        ))}
+        {unassigned.length > 0 && (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={() => exportList("ZipGrade_No_center", unassigned)}>
+              <span className="flex-1">Not assigned to a center</span>
+              <span className="text-xs text-muted-foreground tabular-nums">{unassigned.length}</span>
+            </DropdownMenuItem>
+          </>
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
 
 function NumberingFields({ start, setStart, digits, setDigits }: { start: string; setStart: (v: string) => void; digits: string; setDigits: (v: string) => void }) {
   return (
