@@ -12,6 +12,7 @@ import {
   ChevronLeft,
   ChevronRight,
   ClipboardList,
+  FileCheck2,
   GraduationCap,
   History,
   Gavel,
@@ -69,6 +70,13 @@ export const NAV_ITEMS: NavItem[] = [
       "interview_team",
       "home_visit_team",
     ],
+  },
+  {
+    href: "/exams",
+    label: "Written Exams",
+    icon: FileCheck2,
+    // Same roles as rbac enterExamScores / the exam_* RLS policies (0052).
+    roles: ["super_admin", "program_manager", "selection_team"],
   },
   {
     href: "/field",

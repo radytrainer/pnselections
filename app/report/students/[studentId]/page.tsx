@@ -374,7 +374,10 @@ function FindingsTable({ title, rows }: { title: string; rows: Row[] }) {
         {rows.map((r) => (
           <tr key={r.label} className="border-b border-slate-200 align-top">
             <td className="px-2.5 py-1.5 text-slate-600">{r.label}</td>
-            <td className="px-2.5 py-1.5">{r.value}</td>
+            <td className="px-2.5 py-1.5">
+              <span className={r.noteOnly ? "italic text-slate-700" : undefined}>{r.value}</span>
+              {r.note && <span className="mt-0.5 block text-[0.92em] text-slate-600 italic">Note: {r.note}</span>}
+            </td>
             <td className="px-2.5 py-1.5">
               {r.need ? (
                 <span className={`inline-flex items-center gap-1.5 ${RATING[r.need].text}`}>

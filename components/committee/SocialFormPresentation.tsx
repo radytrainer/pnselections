@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   AlertCircle,
@@ -20,7 +20,9 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { StudentAvatar } from "@/components/students/StudentAvatar";
-import { buildSections, buildVac, type Need, type Row } from "@/components/committee/SocialFormSummary";
+import { buildNotes, buildSections, buildVac, type Need, type Row } from "@/components/committee/SocialFormSummary";
+
+type FieldNote = ReturnType<typeof buildNotes>[number];
 import {
   CATEGORY_BADGE_CLASSES,
   CATEGORY_LABELS,
@@ -45,7 +47,7 @@ type SectionSlide = { kind: "section"; title: string; icon: LucideIcon; rows: Ro
 type Slide =
   | { kind: "overview"; title: string; icon: LucideIcon }
   | SectionSlide
-  | { kind: "notes"; title: string; icon: LucideIcon; rows: Row[]; comments: string | null }
+  | { kind: "notes"; title: string; icon: LucideIcon; rows: Row[]; comments: string | null; notes: FieldNote[] }
   | { kind: "summary"; title: string; icon: LucideIcon };
 
 /** A row with where it lives, so summary/overview items can jump to it. */
@@ -78,6 +80,10 @@ const NEED: Record<Need, { label: string; icon: LucideIcon; tile: string; pill: 
 
 /** Text-size steps for the A− / A+ buttons (multiplies the slide's base size). */
 const SCALES = [0.85, 1, 1.15, 1.3, 1.5];
+/** Smallest automatic shrink when a slide doesn't fit; below that the slide scrolls. */
+const MIN_FIT = 0.6;
+/** Base slide text size (everything on a slide is sized in em from this). */
+const slideFont = (scale: number) => `calc(clamp(13px, 0.8vw + 0.45vh, 19px) * ${scale})`;
 
 /**
  * Full-screen, step-by-step view of one home visit for the selection
@@ -150,8 +156,16 @@ function PresentationView({
       { label: "Poverty Certificate", value: assessment.poverty_certificate ?? "" },
       { label: "Distance from Town", value: assessment.distance_from_town ?? "" },
     ].filter((r) => r.value);
-    if (noteRows.length || assessment.visitor_comments) {
-      list.push({ kind: "notes", title: "Visitor Notes", icon: MessageSquareText, rows: noteRows, comments: assessment.visitor_comments ?? null });
+    const fieldNotes = buildNotes(assessment);
+    if (noteRows.length || assessment.visitor_comments?.trim() || fieldNotes.length) {
+      list.push({
+        kind: "notes",
+        title: "Notes & comments",
+        icon: MessageSquareText,
+        rows: noteRows,
+        comments: assessment.visitor_comments?.trim() || null,
+        notes: fieldNotes,
+      });
     }
     list.push({ kind: "summary", title: "Summary", icon: ClipboardCheck });
     return list;
@@ -226,6 +240,54 @@ function PresentationView({
   }, [index]);
 
   const slide = slides[index];
+  const notesIndex = slides.findIndex((s) => s.kind === "notes");
+  const notesSlide = notesIndex >= 0 ? (slides[notesIndex] as Extract<Slide, { kind: "notes" }>) : null;
+
+  // ---- Fit to screen: shrink the text (everything is sized in em) until the slide fits without scrolling.
+  const mainRef = useRef<HTMLElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
+  const [viewport, setViewport] = useState("");
+  const [tick, setTick] = useState(0);
+  const [fit, setFit] = useState(1);
+  useEffect(() => {
+    const onResize = () => setViewport(`${window.innerWidth}x${window.innerHeight}`);
+    onResize();
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+  useEffect(() => {
+    // A photo finishing loading changes the slide's height: fit again.
+    const c = contentRef.current;
+    if (!c) return;
+    const onLoad = () => setTick((t) => t + 1);
+    c.addEventListener("load", onLoad, true);
+    return () => c.removeEventListener("load", onLoad, true);
+  }, [index]);
+  useLayoutEffect(() => {
+    // Largest size (≤ the chosen A size) that fits, found by trying sizes before paint.
+    const m = mainRef.current;
+    const c = contentRef.current;
+    if (!m || !c) return;
+    const cs = getComputedStyle(m);
+    const avail = m.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
+    const fits = (f: number) => {
+      c.style.fontSize = slideFont(SCALES[scaleIdx] * f);
+      return c.offsetHeight <= avail;
+    };
+    let best = 1;
+    if (!fits(1)) {
+      let lo = MIN_FIT;
+      let hi = 1;
+      for (let i = 0; i < 8; i++) {
+        const mid = (lo + hi) / 2;
+        if (fits(mid)) lo = mid;
+        else hi = mid;
+      }
+      best = lo;
+    }
+    c.style.fontSize = slideFont(SCALES[scaleIdx] * best);
+    setFit(best);
+  }, [index, scaleIdx, viewport, tick]);
 
   const view = (
     <div
@@ -288,11 +350,42 @@ function PresentationView({
       </div>
 
       {/* Slide */}
-      <main className="relative flex min-h-0 flex-1 overflow-y-auto px-4 py-6 sm:px-20" onClick={() => spot != null && setSpot(null)}>
+      <main
+        ref={mainRef}
+        className="relative flex min-h-0 flex-1 items-center gap-[2vw] overflow-y-auto px-4 py-5 sm:px-20"
+        onClick={() => spot != null && setSpot(null)}
+      >
+        {/* The student's face on every slide (the overview already shows it large). */}
+        {slide.kind !== "overview" && (
+          <aside className="hidden w-[clamp(150px,14vw,260px)] shrink-0 self-center lg:block" aria-label="Student">
+            <div className="overflow-hidden rounded-2xl border bg-card shadow-sm">
+              <StudentAvatar
+                photoPath={student.photoPath}
+                initials={student.initials}
+                shape="square"
+                size="w-full aspect-[4/5]"
+                displayWidth={320}
+                className="rounded-none text-[2.5rem] font-medium"
+                zoomable
+                alt={student.name}
+              />
+              <div className="space-y-1.5 p-3 text-center">
+                <p className="text-[clamp(14px,1.05vw,18px)] leading-tight font-semibold">{student.name}</p>
+                {student.code && <p className="font-mono text-xs text-muted-foreground">{student.code}</p>}
+                {student.facts.length > 0 && <p className="text-xs leading-snug text-muted-foreground">{student.facts.join(" · ")}</p>}
+                <p className={cn("inline-block rounded-full px-2.5 py-0.5 text-xs font-medium", scoreClass)}>
+                  {assessment.final_score} pts · {scoreLabel}
+                </p>
+              </div>
+            </div>
+          </aside>
+        )}
         <div
           key={index}
-          className="m-auto w-full max-w-6xl animate-in duration-300 fade-in slide-in-from-right-4"
-          style={{ fontSize: `calc(clamp(13px, 0.8vw + 0.45vh, 19px) * ${SCALES[scaleIdx]})` }}
+          ref={contentRef}
+          className="m-auto w-full max-w-6xl min-w-0 animate-in duration-300 fade-in slide-in-from-right-4"
+          // No font-size transition: the fit search must measure each size immediately.
+          style={{ fontSize: slideFont(SCALES[scaleIdx] * fit), transition: "none" }}
         >
           {slide.kind === "overview" && (
             <OverviewSlide
@@ -304,6 +397,9 @@ function PresentationView({
               concerns={concerns}
               onJump={(l) => go(l.slide, l.row)}
               onSeeAll={() => go(last)}
+              comments={notesSlide?.comments ?? null}
+              noteCount={notesSlide?.notes.length ?? 0}
+              onNotes={notesIndex >= 0 ? () => go(notesIndex) : undefined}
             />
           )}
           {slide.kind === "section" && <SectionSlideView slide={slide} spot={spot} onSpot={setSpot} />}
@@ -318,6 +414,9 @@ function PresentationView({
               vacLine={vac.tier ? `${assessment.vac_total_score}/36 · ${VAC_TIER_LABELS[vac.tier]}` : null}
               vacClass={vac.tier ? VAC_TIER_BADGE_CLASSES[vac.tier] : ""}
               onJump={(l) => go(l.slide, l.row)}
+              comments={notesSlide?.comments ?? null}
+              noteCount={notesSlide?.notes.length ?? 0}
+              onNotes={notesIndex >= 0 ? () => go(notesIndex) : undefined}
             />
           )}
         </div>
@@ -450,7 +549,7 @@ function SectionSlideView({ slide, spot, onSpot }: { slide: SectionSlide; spot: 
       <div className={cn("grid", many ? "gap-[0.6em] md:grid-cols-2 xl:grid-cols-3" : "gap-[0.75em] md:grid-cols-2")}>
         {slide.rows.map((r, i) => {
           const n = r.need ? NEED[r.need] : null;
-          const long = r.value.length > 60;
+          const long = r.value.length + (r.note?.length ?? 0) > 60;
           const active = spot === i;
           const dimmed = spot != null && !active;
           return (
@@ -476,7 +575,22 @@ function SectionSlideView({ slide, spot, onSpot }: { slide: SectionSlide; spot: 
                 <p className="text-[0.75em] font-medium tracking-wide text-muted-foreground uppercase">{r.label}</p>
                 {r.need && <NeedPill need={r.need} />}
               </div>
-              <p className={cn("mt-[0.2em] leading-snug font-medium", active ? "text-[1.45em]" : many ? "text-[1.05em]" : "text-[1.15em]")}>{r.value}</p>
+              <p
+                className={cn(
+                  "mt-[0.2em] leading-snug",
+                  r.noteOnly ? "font-normal italic" : "font-medium",
+                  active ? "text-[1.45em]" : many ? "text-[1.05em]" : "text-[1.15em]",
+                )}
+              >
+                {r.noteOnly && <MessageSquareText className="mr-[0.35em] inline size-[0.85em] align-[-0.05em] text-muted-foreground" />}
+                {r.value}
+              </p>
+              {r.note && (
+                <p className={cn("mt-[0.4em] flex gap-[0.4em] border-t border-current/10 pt-[0.4em] leading-snug text-muted-foreground italic", active ? "text-[1.1em]" : "text-[0.88em]")}>
+                  <MessageSquareText className="mt-[0.18em] size-[0.95em] shrink-0" aria-label="Visitor's note" />
+                  {r.note}
+                </p>
+              )}
             </button>
           );
         })}
@@ -486,25 +600,64 @@ function SectionSlideView({ slide, spot, onSpot }: { slide: SectionSlide; spot: 
   );
 }
 
+/**
+ * Every comment from the Social Form on one slide: the visitor's overall
+ * comments first, then each note grouped by section, next to the answer it
+ * explains.
+ */
 function NotesSlide({ slide }: { slide: Extract<Slide, { kind: "notes" }> }) {
+  const groups = new Map<string, FieldNote[]>();
+  for (const n of slide.notes) groups.set(n.section, [...(groups.get(n.section) ?? []), n]);
   return (
-    <section>
-      <SlideTitle icon={slide.icon} title={slide.title} />
-      {slide.rows.length > 0 && (
-        <div className="grid gap-[0.75em] md:grid-cols-2">
-          {slide.rows.map((r) => (
-            <div key={r.label} className="rounded-xl border bg-card p-[0.9em] shadow-sm">
-              <p className="text-[0.75em] font-medium tracking-wide text-muted-foreground uppercase">{r.label}</p>
-              <p className="mt-[0.2em] text-[1.15em] font-medium">{r.value}</p>
-            </div>
-          ))}
-        </div>
-      )}
+    <section className="space-y-[1em]">
+      <SlideTitle
+        icon={slide.icon}
+        title={slide.title}
+        right={
+          <div className="flex flex-wrap gap-[0.4em]">
+            {slide.rows.map((r) => (
+              <span key={r.label} className="rounded-full border bg-card px-[0.8em] py-[0.25em] text-[0.85em]">
+                <span className="text-muted-foreground">{r.label}:</span> <span className="font-medium">{r.value}</span>
+              </span>
+            ))}
+          </div>
+        }
+      />
       {slide.comments && (
-        <figure className="mt-[1em] rounded-2xl border bg-card p-[1.4em] shadow-sm">
-          <blockquote className="text-[1.25em] leading-relaxed">“{slide.comments}”</blockquote>
-          <figcaption className="mt-[0.6em] text-[0.9em] text-muted-foreground">Home visitor&apos;s comments</figcaption>
+        <figure className="relative rounded-2xl border-l-[0.35em] border-primary bg-card p-[1.2em] pl-[1.4em] shadow-sm">
+          <figcaption className="mb-[0.4em] text-[0.75em] font-medium tracking-wide text-muted-foreground uppercase">Home visitor&apos;s overall comments</figcaption>
+          <blockquote className="text-[1.2em] leading-relaxed whitespace-pre-line">{slide.comments}</blockquote>
         </figure>
+      )}
+      {groups.size > 0 ? (
+        <div className="columns-1 gap-[1em] md:columns-2 [&>*]:mb-[1em] [&>*]:break-inside-avoid">
+          {[...groups.entries()].map(([section, notes]) => {
+            const Icon = notes[0].icon;
+            return (
+              <div key={section} className="rounded-xl border bg-card shadow-sm">
+                <p className="flex items-center gap-[0.45em] border-b px-[1em] py-[0.55em] text-[0.8em] font-semibold tracking-wide text-muted-foreground uppercase">
+                  <Icon className="size-[1.1em] text-primary" /> {section}
+                </p>
+                <ul className="divide-y">
+                  {notes.map((n) => (
+                    <li key={n.label} className="px-[1em] py-[0.6em]">
+                      <p className="flex flex-wrap items-baseline gap-x-[0.5em] text-[0.95em]">
+                        <span className="font-medium">{n.label}</span>
+                        {n.answer && <span className="text-muted-foreground">· {n.answer}</span>}
+                      </p>
+                      <p className="mt-[0.2em] flex gap-[0.4em] leading-snug">
+                        <MessageSquareText className="mt-[0.2em] size-[0.95em] shrink-0 text-muted-foreground" aria-hidden />
+                        <span className="italic">{n.note}</span>
+                      </p>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        !slide.comments && <p className="text-[0.95em] text-muted-foreground">No notes were written on this form.</p>
       )}
     </section>
   );
@@ -561,6 +714,9 @@ function OverviewSlide({
   concerns,
   onJump,
   onSeeAll,
+  comments,
+  noteCount,
+  onNotes,
 }: {
   student: PresentationStudent;
   assessment: SocialAssessmentRow;
@@ -570,6 +726,9 @@ function OverviewSlide({
   concerns: Located[];
   onJump: (l: Located) => void;
   onSeeAll: () => void;
+  comments: string | null;
+  noteCount: number;
+  onNotes?: () => void;
 }) {
   const score = assessment.final_score ?? 0;
   return (
@@ -704,6 +863,33 @@ function OverviewSlide({
             </div>
           )}
         </div>
+
+        {(comments || noteCount > 0) && (
+          <div className="rounded-2xl border-l-[0.35em] border-primary bg-card p-[1.1em] pl-[1.2em] shadow-sm">
+            <div className="mb-[0.4em] flex flex-wrap items-center justify-between gap-2">
+              <p className="flex items-center gap-[0.4em] text-[1em] font-medium">
+                <MessageSquareText className="size-[1em] text-primary" /> Home visitor&apos;s comments
+              </p>
+              {noteCount > 0 && onNotes && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onNotes();
+                  }}
+                  className="text-[0.85em] font-medium text-primary hover:underline"
+                >
+                  All {noteCount} note{noteCount === 1 ? "" : "s"} →
+                </button>
+              )}
+            </div>
+            {comments ? (
+              <p className="line-clamp-4 text-[0.98em] leading-relaxed whitespace-pre-line">{comments}</p>
+            ) : (
+              <p className="text-[0.9em] text-muted-foreground">No overall comment; {noteCount} note{noteCount === 1 ? "" : "s"} on individual answers.</p>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -718,6 +904,9 @@ function SummarySlide({
   vacLine,
   vacClass,
   onJump,
+  comments,
+  noteCount,
+  onNotes,
 }: {
   concerns: Located[];
   watch: Located[];
@@ -727,8 +916,11 @@ function SummarySlide({
   vacLine: string | null;
   vacClass: string;
   onJump: (l: Located) => void;
+  comments: string | null;
+  noteCount: number;
+  onNotes?: () => void;
 }) {
-  const column = (need: Need, title: string, items: Located[]) => {
+  const column = (need: Need, title: string, items: Located[], split = false) => {
     const n = NEED[need];
     return (
       <div className="flex min-w-0 flex-col rounded-2xl border bg-card shadow-sm">
@@ -742,20 +934,25 @@ function SummarySlide({
         {items.length === 0 ? (
           <p className="p-[1em] text-[0.9em] text-muted-foreground">None</p>
         ) : (
-          <ul className="max-h-[52vh] divide-y overflow-y-auto">
+          // No inner scrolling: the whole slide shrinks to fit the screen instead.
+          <ul className={cn(split ? "gap-x-[1em] px-[0.4em] sm:columns-2" : "divide-y")}>
             {items.map((l) => (
-              <li key={`${l.section}-${l.label}`}>
+              <li key={`${l.section}-${l.label}`} className={cn(split && "break-inside-avoid border-b border-border/60")}>
                 <button
                   type="button"
                   onClick={(e) => {
                     e.stopPropagation();
                     onJump(l);
                   }}
-                  title={`${l.label}: ${l.value} (${l.section}) — click to open`}
-                  className="flex w-full items-baseline gap-[0.4em] px-[1em] py-[0.45em] text-left text-[0.92em] leading-snug transition hover:bg-muted/60"
+                  title={`${l.section}${l.note ? ` — note: ${l.note}` : ""} — click to open`}
+                  className={cn(
+                    "block w-full py-[0.4em] text-left text-[0.92em] leading-snug transition hover:bg-muted/60",
+                    split ? "px-[0.6em]" : "px-[1em]",
+                  )}
                 >
-                  <span className="shrink-0 font-medium">{l.label}</span>
-                  <span className="min-w-0 truncate text-muted-foreground">{l.value}</span>
+                  <span className="font-medium">{l.label}</span>
+                  <span className="text-muted-foreground"> · {l.value}</span>
+                  {l.note && <MessageSquareText className="ml-[0.35em] inline size-[0.9em] align-[-0.1em] text-muted-foreground" aria-label="Has a note" />}
                 </button>
               </li>
             ))}
@@ -777,11 +974,42 @@ function SummarySlide({
           </div>
         }
       />
-      <div className="grid items-start gap-[1em] md:grid-cols-3">
-        {column("high", "Concerns", concerns)}
-        {column("medium", "To watch", watch)}
-        {column("low", "Strengths", strengths)}
-      </div>
+      {concerns.length > 8 ? (
+        // Many concerns: give them two-thirds of the width in two columns; the shorter lists stack beside them.
+        <div className="grid items-start gap-[1em] md:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+          {column("high", "Concerns", concerns, true)}
+          <div className="grid gap-[1em]">
+            {column("medium", "To watch", watch)}
+            {column("low", "Strengths", strengths)}
+          </div>
+        </div>
+      ) : (
+        <div className="grid items-start gap-[1em] md:grid-cols-3">
+          {column("high", "Concerns", concerns)}
+          {column("medium", "To watch", watch)}
+          {column("low", "Strengths", strengths)}
+        </div>
+      )}
+      {(comments || noteCount > 0) && (
+        <div className="mt-[1em] rounded-2xl border-l-[0.35em] border-primary bg-card p-[1em] pl-[1.2em] shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-[0.75em] font-medium tracking-wide text-muted-foreground uppercase">Home visitor&apos;s overall comments</p>
+            {noteCount > 0 && onNotes && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onNotes();
+                }}
+                className="inline-flex items-center gap-[0.3em] text-[0.85em] font-medium text-primary hover:underline"
+              >
+                <MessageSquareText className="size-[1em]" /> All {noteCount} note{noteCount === 1 ? "" : "s"} →
+              </button>
+            )}
+          </div>
+          <p className="mt-[0.3em] text-[1.02em] leading-relaxed whitespace-pre-line">{comments || <span className="text-muted-foreground">No overall comment.</span>}</p>
+        </div>
+      )}
     </section>
   );
 }

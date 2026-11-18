@@ -71,7 +71,16 @@ import { cn } from "@/lib/utils";
  * points don't map to need that way, so they stay neutral.
  */
 export type Need = "high" | "medium" | "low";
-export type Row = { label: string; value: string; need?: Need };
+/** note = the home visitor's free-text comment on this answer (shown under the value). */
+export type Row = { label: string; value: string; need?: Need; note?: string; /** value is the visitor's note (no answer chosen) */ noteOnly?: boolean };
+
+/** Attaches a free-text note to a row; a note with no answer becomes the value itself. */
+function withNote(row: Row, note: string | null | undefined): Row {
+  const n = note?.trim();
+  if (!n) return row;
+  if (!row.value) return { label: row.label, value: n, noteOnly: true };
+  return n === row.value ? row : { ...row, note: n };
+}
 
 function needFrom<K extends string>(points: Record<K, number>, key: K | null | undefined): Need | undefined {
   if (key == null) return undefined;
@@ -100,36 +109,39 @@ function parentLine(age: number | null | undefined, job: string | null | undefin
   return [age != null ? `Age ${age}` : "", job ?? "", income ? `Income ${income}` : "", education ?? ""].filter(Boolean).join(" · ");
 }
 
-function noteOrLabel(label: string | null | undefined, note: string | null | undefined) {
-  return note?.trim() ? note : (label ?? "");
-}
-
-/** The Social Form sections (label/value rows), shared with the full-screen presentation. */
+/** The Social Form sections (label/value rows, with the visitor's notes attached), shared with the presentation and the PDF report. */
 export function buildSections(a: SocialAssessmentRow) {
   return [
     section("Health & Academic", HeartPulse, [
       { label: "Age", value: a.age?.toString() ?? "" },
       { label: "Child Rank in Family", value: a.child_rank?.toString() ?? "" },
       { label: "Children in Family", value: a.children_count?.toString() ?? "" },
-      {
-        label: "Family Members",
-        value: [
-          a.family_male_count != null ? `${a.family_male_count} male` : "",
-          a.family_female_count != null ? `${a.family_female_count} female` : "",
-        ]
-          .filter(Boolean)
-          .join(" · "),
-      },
-      { label: "Family Notes", value: a.family_note ?? "" },
+      withNote(
+        {
+          label: "Family Members",
+          value: [
+            a.family_male_count != null ? `${a.family_male_count} male` : "",
+            a.family_female_count != null ? `${a.family_female_count} female` : "",
+          ]
+            .filter(Boolean)
+            .join(" · "),
+        },
+        a.family_note,
+      ),
       { label: "Health", value: labelFor(HEALTH_OPTS, a.health_status) ?? "" },
-      { label: "Academic Performance", value: labelFor(ACADEMIC_OPTS, a.academic_rank) ?? "" },
-      { label: "Academic Notes", value: a.academic_note ?? "" },
+      withNote({ label: "Academic Performance", value: labelFor(ACADEMIC_OPTS, a.academic_rank) ?? "" }, a.academic_note),
       { label: "Major", value: labelFor(MAJOR_OPTS, a.major) ?? "" },
       { label: "OK to Join Training", value: a.ok_to_join_training ?? "" },
     ]),
     section("Household & Family", Users, [
-      { label: "Household Size", value: labelFor(HOUSEHOLD_SIZE_OPTS, a.household_size_band) ?? "", need: needFrom(HOUSEHOLD_SIZE_POINTS, a.household_size_band) },
-      { label: "Dependents", value: labelFor(DEPENDENTS_OPTS, a.dependents_band) ?? "", need: needFrom(DEPENDENTS_POINTS, a.dependents_band) },
+      withNote(
+        { label: "Household Size", value: labelFor(HOUSEHOLD_SIZE_OPTS, a.household_size_band) ?? "", need: needFrom(HOUSEHOLD_SIZE_POINTS, a.household_size_band) },
+        a.household_size_note,
+      ),
+      withNote(
+        { label: "Dependents", value: labelFor(DEPENDENTS_OPTS, a.dependents_band) ?? "", need: needFrom(DEPENDENTS_POINTS, a.dependents_band) },
+        a.dependents_note,
+      ),
       { label: "Children Studying", value: a.school_aged_children_studying?.toString() ?? "" },
       { label: "Children Working", value: a.school_aged_children_working?.toString() ?? "" },
       { label: "School Attendance", value: labelFor(SCHOOL_ATTENDANCE_OPTS, a.school_attendance_band) ?? "", need: needFrom(SCHOOL_ATTENDANCE_POINTS, a.school_attendance_band) },
@@ -158,43 +170,59 @@ export function buildSections(a: SocialAssessmentRow) {
       { label: "Electricity", value: labelFor(ELECTRICITY_OPTS, a.electricity_access_band) ?? "", need: needFrom(ELECTRICITY_ACCESS_POINTS, a.electricity_access_band) },
     ]),
     section("Household Assets", Package, [
-      { label: "Furniture", value: ASSET_RANK_LABELS[a.assets_furniture ?? 0] ?? "", need: assetNeed(a.assets_furniture) },
-      { label: "Transport", value: ASSET_RANK_LABELS[a.assets_transport ?? 0] ?? "", need: assetNeed(a.assets_transport) },
-      { label: "Electronics", value: ASSET_RANK_LABELS[a.assets_electronics ?? 0] ?? "", need: assetNeed(a.assets_electronics) },
-      { label: "Livestock", value: ASSET_RANK_LABELS[a.assets_livestock ?? 0] ?? "", need: assetNeed(a.assets_livestock) },
+      withNote({ label: "Furniture", value: ASSET_RANK_LABELS[a.assets_furniture ?? 0] ?? "", need: assetNeed(a.assets_furniture) }, a.assets_furniture_note),
+      withNote({ label: "Transport", value: ASSET_RANK_LABELS[a.assets_transport ?? 0] ?? "", need: assetNeed(a.assets_transport) }, a.assets_transport_note),
+      withNote(
+        { label: "Electronics", value: ASSET_RANK_LABELS[a.assets_electronics ?? 0] ?? "", need: assetNeed(a.assets_electronics) },
+        a.assets_electronics_note,
+      ),
+      withNote({ label: "Livestock", value: ASSET_RANK_LABELS[a.assets_livestock ?? 0] ?? "", need: assetNeed(a.assets_livestock) }, a.assets_livestock_note),
     ]),
     section("Income & Expenses", Wallet, [
-      { label: "Monthly Income", value: noteOrLabel(labelFor(INCOME_OPTS, a.income_band), a.income_note), need: needFrom(INCOME_POINTS, a.income_band) },
-      { label: "Monthly Expenses", value: noteOrLabel(labelFor(EXPENSES_OPTS, a.expenses_band), a.expenses_note), need: needFrom(EXPENSES_POINTS, a.expenses_band) },
-      {
-        label: "Can Support Education",
-        value: noteOrLabel(labelFor(EDUCATION_SUPPORT_OPTS, a.education_support_band), a.education_support_note),
-        need: needFrom(EDUCATION_SUPPORT_POINTS, a.education_support_band),
-      },
+      withNote({ label: "Monthly Income", value: labelFor(INCOME_OPTS, a.income_band) ?? "", need: needFrom(INCOME_POINTS, a.income_band) }, a.income_note),
+      withNote({ label: "Monthly Expenses", value: labelFor(EXPENSES_OPTS, a.expenses_band) ?? "", need: needFrom(EXPENSES_POINTS, a.expenses_band) }, a.expenses_note),
+      withNote(
+        {
+          label: "Can Support Education",
+          value: labelFor(EDUCATION_SUPPORT_OPTS, a.education_support_band) ?? "",
+          need: needFrom(EDUCATION_SUPPORT_POINTS, a.education_support_band),
+        },
+        a.education_support_note,
+      ),
     ]),
     section("Debt", CreditCard, [
-      { label: "Debt Status", value: [labelFor(DEBT_OPTS, a.debt_band), a.debt_amount].filter(Boolean).join(" — "), need: needFrom(DEBT_POINTS, a.debt_band) },
-      { label: "Reason for Debt", value: a.debt_note ?? "" },
+      withNote(
+        { label: "Debt Status", value: [labelFor(DEBT_OPTS, a.debt_band), a.debt_amount].filter(Boolean).join(" — "), need: needFrom(DEBT_POINTS, a.debt_band) },
+        a.debt_note,
+      ),
     ]),
     section("Farming, Plantation & Husbandry", Wheat, [
-      { label: "Farm Land", value: [labelFor(LAND_OPTS, a.farm_land_band), a.farm_land_note].filter(Boolean).join(" — "), need: needFrom(LAND_POINTS, a.farm_land_band) },
+      withNote({ label: "Farm Land", value: labelFor(LAND_OPTS, a.farm_land_band) ?? "", need: needFrom(LAND_POINTS, a.farm_land_band) }, a.farm_land_note),
       { label: "Farm Income", value: labelFor(INCOME_CONTRIBUTION_OPTS, a.farm_income_band) ?? "", need: needFrom(INCOME_CONTRIBUTION_POINTS, a.farm_income_band) },
       { label: "Plantation Land", value: labelFor(LAND_OPTS, a.plantation_land_band) ?? "", need: needFrom(LAND_POINTS, a.plantation_land_band) },
       { label: "Plantation Income", value: labelFor(INCOME_CONTRIBUTION_OPTS, a.plantation_income_band) ?? "", need: needFrom(INCOME_CONTRIBUTION_POINTS, a.plantation_income_band) },
-      { label: "Husbandry", value: [labelFor(HUSBANDRY_OPTS, a.husbandry_band), a.husbandry_note].filter(Boolean).join(" — "), need: needFrom(HUSBANDRY_POINTS, a.husbandry_band) },
+      withNote({ label: "Husbandry", value: labelFor(HUSBANDRY_OPTS, a.husbandry_band) ?? "", need: needFrom(HUSBANDRY_POINTS, a.husbandry_band) }, a.husbandry_note),
     ]),
     section("Vulnerability Factors", ShieldAlert, [
-      {
-        label: "Flagged",
-        value: VULNERABILITY_OPTS.filter((v) => a[v.name as keyof SocialAssessmentRow])
+      (() => {
+        const flagged = VULNERABILITY_OPTS.filter((v) => a[v.name as keyof SocialAssessmentRow])
           .map((v) => v.label)
-          .join(", "),
-        need: "high",
-      },
+          .join(", ");
+        // A note without any flag is still shown, but isn't a concern on its own.
+        return withNote({ label: "Flagged", value: flagged, need: flagged ? "high" : undefined }, a.vulnerability_note);
+      })(),
       { label: "Score Deduction", value: a.vulnerability_deduction ? `−${a.vulnerability_deduction}` : "" },
-      { label: "Notes", value: a.vulnerability_note ?? "" },
     ]),
   ];
+}
+
+/** Every free-text note the home visitor wrote, with where it belongs (for the "Notes & comments" slide). */
+export function buildNotes(a: SocialAssessmentRow) {
+  return buildSections(a).flatMap((sec) =>
+    sec.rows
+      .filter((r) => r.note || r.noteOnly)
+      .map((r) => ({ section: sec.title, icon: sec.icon, label: r.label, answer: r.note ? r.value : "", note: r.note ?? r.value })),
+  );
 }
 
 /** Vulnerability Assessment Checklist rows + tier, shared with the presentation. */
@@ -271,9 +299,12 @@ export function SocialFormSummary({ assessment }: { assessment: SocialAssessment
             ) : (
               <dl className="mt-1.5 space-y-1 text-xs">
                 {sec.rows.map((row) => (
-                  <div key={row.label} className="flex justify-between gap-3">
-                    <dt className="text-muted-foreground">{row.label}</dt>
-                    <dd className="text-right font-medium">{row.value}</dd>
+                  <div key={row.label}>
+                    <div className="flex justify-between gap-3">
+                      <dt className="text-muted-foreground">{row.label}</dt>
+                      <dd className={cn("text-right font-medium", row.noteOnly && "font-normal italic")}>{row.value}</dd>
+                    </div>
+                    {row.note && <p className="mt-0.5 border-l-2 pl-2 text-muted-foreground italic">{row.note}</p>}
                   </div>
                 ))}
               </dl>

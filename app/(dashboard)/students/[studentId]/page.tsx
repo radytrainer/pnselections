@@ -41,6 +41,7 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
 import { RoleGate } from "@/components/layout/RoleGate";
+import { StudentWrittenExam } from "@/components/exams/StudentWrittenExam";
 import { useAuth } from "@/hooks/useAuth";
 import { useRole } from "@/hooks/useRole";
 import { can } from "@/lib/rbac";
@@ -161,6 +162,7 @@ export default function StudentDetailPage() {
   const params = useParams<{ studentId: string }>();
   const { user } = useAuth();
   const { role } = useRole();
+  const [hasWrittenExam, setHasWrittenExam] = useState(false);
   const [myUserId, setMyUserId] = useState<string | null>(null);
   const [student, setStudent] = useState<StudentDetail | null>(null);
   const [interviewSummary, setInterviewSummary] = useState<InterviewSummary | null>(null);
@@ -387,6 +389,7 @@ export default function StudentDetailPage() {
         </TabsContent>
 
         <TabsContent value="exam" className="mt-4 space-y-4">
+          {can(role, "enterExamScores") && <StudentWrittenExam studentId={student.id} onFound={setHasWrittenExam} />}
           {student.exam_results ? (
             <>
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -409,14 +412,16 @@ export default function StudentDetailPage() {
               </SectionCard>
             </>
           ) : (
-            <p className="text-sm text-muted-foreground">No exam scores entered yet.</p>
+            !hasWrittenExam && <p className="text-sm text-muted-foreground">No exam scores entered yet.</p>
           )}
-          <RoleGate capability="enterExamScores">
-            <Link href={`/students/${student.id}/exam`} className={buttonVariants({ className: "w-full gap-1.5 sm:w-auto" })}>
-              <Pencil className="size-4" />
-              {student.exam_results ? "Edit Exam Scores" : "Enter Exam Scores"}
-            </Link>
-          </RoleGate>
+          {(student.exam_results || !hasWrittenExam) && (
+            <RoleGate capability="enterExamScores">
+              <Link href={`/students/${student.id}/exam`} className={buttonVariants({ className: "w-full gap-1.5 sm:w-auto" })}>
+                <Pencil className="size-4" />
+                {student.exam_results ? "Edit Exam Scores" : "Enter Exam Scores"}
+              </Link>
+            </RoleGate>
+          )}
         </TabsContent>
 
         <TabsContent value="interview" className="mt-4 space-y-4">

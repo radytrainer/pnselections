@@ -50,3 +50,7 @@ storage-data/
 *.backup.gz
 *.backup
 *.pem
+# ZipGrade exports / exam result files (candidate personal data) — never commit
+quiz-*.csv
+*-full.csv
+*.xlsx

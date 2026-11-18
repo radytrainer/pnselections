@@ -32,6 +32,7 @@ import { STUDENT_STATUSES, type StudentStatus } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 import type { CardColor } from "@/lib/cardColors";
 import { StudentDetailDrawer } from "@/components/dashboard/StudentDetailDrawer";
+import { DashboardExamCard } from "@/components/exams/DashboardExamCard";
 
 // Charts (recharts, ~120 KB) load in parallel with the dashboard data instead
 // of blocking the first paint; they only render once that data arrives anyway.
@@ -381,6 +382,8 @@ export default function DashboardPage() {
           </div>
         </CardContent>
       </Card>
+
+      {online && cycleId && <DashboardExamCard cycleId={cycleId} />}
 
       {/* Trends + field work */}
       <div className="grid grid-cols-1 items-start gap-6 xl:grid-cols-2">

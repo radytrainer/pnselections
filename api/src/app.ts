@@ -8,6 +8,7 @@ import { errorHandler } from "./errors";
 import { rateLimitHit, redis } from "./redis";
 import { adminRouter, sessionRouter } from "./routes/admin";
 import { assessmentsRouter } from "./routes/assessments";
+import { writtenExamsRouter } from "./routes/writtenExams";
 import { committeeRouter } from "./routes/committee";
 import { filesRouter, uploadsRouter } from "./routes/files";
 import { lookupsRouter } from "./routes/lookups";
@@ -85,6 +86,7 @@ export function createApp() {
   v1.use("/students", studentsRouter);
   v1.use("/committee", committeeRouter);
   v1.use(assessmentsRouter);
+  v1.use(writtenExamsRouter);
   v1.use(partnersRouter);
   v1.use(reportsRouter);
   v1.use(miscRouter);
