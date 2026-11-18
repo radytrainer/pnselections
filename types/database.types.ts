@@ -317,6 +317,7 @@ export type Database = {
             | "declined"
             | "dropped_out";
           elimination_reason: string | null;
+          interview_center_id: string | null;
           created_at: string;
           updated_at: string;
           created_by: string | null;
@@ -364,6 +365,7 @@ export type Database = {
             | "declined"
             | "dropped_out";
           elimination_reason?: string | null;
+          interview_center_id?: string | null;
           created_at?: string;
           updated_at?: string;
           created_by?: string | null;

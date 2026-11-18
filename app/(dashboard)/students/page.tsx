@@ -17,7 +17,7 @@ import { getSignedStudentDocumentUrls, pickLatestPhotoPath } from "@/lib/storage
 import { StudentsTable } from "@/components/tables/StudentsTable";
 import { StudentImportDialog } from "@/components/forms/StudentImportDialog";
 import { CycleSelect } from "@/components/forms/CycleSelect";
-import { Plus, Search, SlidersHorizontal, Trash2, X } from "lucide-react";
+import { Mic, Plus, Search, SlidersHorizontal, Trash2, X } from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
@@ -34,6 +34,9 @@ import { useAuth } from "@/hooks/useAuth";
 import { useCycleFilter } from "@/hooks/useCycleFilter";
 import { useRole } from "@/hooks/useRole";
 import { STUDENT_STATUSES } from "@/lib/constants";
+import { can } from "@/lib/rbac";
+import { listInterviewCenters, type InterviewCenter } from "@/services/interviewCenterService";
+import { InterviewCentersDialog } from "@/components/students/InterviewCentersDialog";
 
 const PAGE_SIZE = 25;
 
@@ -67,6 +70,19 @@ export default function StudentsPage() {
   /** Show students who failed the written exam / interview (hidden by default). */
   const [showOut, setShowOut] = useState(false);
   const [hiddenOut, setHiddenOut] = useState(0);
+  // Interview centers of the selected cycle (filter + "Interview centers" dialog).
+  const [interviewCenters, setInterviewCenters] = useState<InterviewCenter[]>([]);
+  const [interviewCenterId, setInterviewCenterId] = useState("");
+  const [centersOpen, setCentersOpen] = useState(false);
+  const canManageCenters = can(role, "enterInterviewScores");
+  const loadCenters = useCallback(async () => {
+    if (!cycleId) return setInterviewCenters([]);
+    setInterviewCenters(await listInterviewCenters(cycleId).catch(() => []));
+  }, [cycleId]);
+  useEffect(() => {
+    setInterviewCenterId("");
+    loadCenters();
+  }, [loadCenters]);
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -140,9 +156,9 @@ export default function StudentsPage() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  const activeFilterCount = [search, status, homeVisitor, provinceId, ngoName].filter(Boolean).length;
+  const activeFilterCount = [search, status, homeVisitor, provinceId, ngoName, interviewCenterId].filter(Boolean).length;
   /** Dropdown filters only (not the search box) — the badge on the phone/tablet Filters button. */
-  const dropdownFilterCount = [status, homeVisitor, provinceId, ngoName].filter(Boolean).length;
+  const dropdownFilterCount = [status, homeVisitor, provinceId, ngoName, interviewCenterId].filter(Boolean).length;
   const [filtersOpen, setFiltersOpen] = useState(false);
 
   function clearFilters() {
@@ -153,7 +169,9 @@ export default function StudentsPage() {
     setHomeVisitor("");
     setProvinceId("");
     setNgoName("");
+    setInterviewCenterId("");
   }
+
 
   useEffect(() => {
     listProvinces().then(setProvinces).catch(() => toast.error("Failed to load provinces"));
@@ -194,6 +212,7 @@ export default function StudentsPage() {
         provinceId: provinceId || undefined,
         ngoIds,
         cycleId: cycleId || undefined,
+        interviewCenterId: interviewCenterId || undefined,
       };
       // Students out of the process (failed the exam/interview) are hidden unless asked for.
       const [result, everyone] = await Promise.all([
@@ -214,7 +233,7 @@ export default function StudentsPage() {
     } finally {
       if (seq === listSeq.current) setLoading(false);
     }
-  }, [page, search, status, homeVisitor, provinceId, ngoIds, cycleId, showOut]);
+  }, [page, search, status, homeVisitor, provinceId, ngoIds, cycleId, showOut, interviewCenterId]);
 
   useEffect(() => {
     if (!restored || cyclesLoading) return;
@@ -232,12 +251,13 @@ export default function StudentsPage() {
       ngoIds,
       cycleId: cycleId || undefined,
       hideOut: !showOut,
+      interviewCenterId: interviewCenterId || undefined,
     })
       .then((counts) => {
         if (seq === countSeq.current) setGenderCounts(counts);
       })
       .catch(() => {});
-  }, [restored, cyclesLoading, search, status, homeVisitor, provinceId, ngoIds, cycleId, showOut]);
+  }, [restored, cyclesLoading, search, status, homeVisitor, provinceId, ngoIds, cycleId, showOut, interviewCenterId]);
 
   const selectTriggerClass = "w-full lg:w-44";
 
@@ -494,6 +514,39 @@ export default function StudentsPage() {
               ))}
             </SelectContent>
           </Select>
+          {cycleId && (interviewCenters.length > 0 || canManageCenters) && (
+            <div className="flex gap-1">
+              <Select
+                value={interviewCenterId}
+                onValueChange={(value) => {
+                  setPage(1);
+                  setInterviewCenterId(value ?? "");
+                }}
+              >
+                <SelectTrigger className={cn(selectTriggerClass, interviewCenterId && "border-primary/40 bg-primary/5")} aria-label="Interview center">
+                  <SelectValue placeholder="All interview centers">
+                    {(value: string) =>
+                      !value ? "All interview centers" : value === "__none__" ? "No interview center" : (interviewCenters.find((c) => c.id === value)?.name ?? "All interview centers")
+                    }
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">All interview centers</SelectItem>
+                  {interviewCenters.map((c) => (
+                    <SelectItem key={c.id} value={c.id}>
+                      {c.name} ({c.students ?? 0})
+                    </SelectItem>
+                  ))}
+                  <SelectItem value="__none__">No interview center</SelectItem>
+                </SelectContent>
+              </Select>
+              {canManageCenters && (
+                <Button variant="outline" size="icon" title="Interview centers: add, rename, assign students" aria-label="Manage interview centers" onClick={() => setCentersOpen(true)}>
+                  <Mic />
+                </Button>
+              )}
+            </div>
+          )}
           {activeFilterCount > 0 && (
             <Button variant="ghost" size="sm" className="col-span-2 justify-self-start text-muted-foreground sm:col-span-1" onClick={clearFilters}>
               <X />
@@ -502,6 +555,20 @@ export default function StudentsPage() {
           )}
         </div>
       </div>
+
+      {cycleId && canManageCenters && (
+        <InterviewCentersDialog
+          open={centersOpen}
+          onOpenChange={setCentersOpen}
+          cycleId={cycleId}
+          cycleName={cycles.find((c) => c.id === cycleId)?.name ?? ""}
+          centers={interviewCenters}
+          onChanged={async () => {
+            await loadCenters();
+            await fetchStudents();
+          }}
+        />
+      )}
 
       <StudentsTable
         data={data}

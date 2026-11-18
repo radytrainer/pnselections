@@ -101,7 +101,9 @@ const interviewBody = z.object({
   comments: z.string().nullable(),
   recommendation: z.string().nullable(),
   answers: z.array(z.object({ questionId: z.string().uuid(), score: z.number().int() })),
+  /** Kept for older clients/offline queues; the outcome is decided by apply_interview_outcome. */
   nextStatus: z.string().optional(),
+  interviewCenterId: z.string().uuid().nullish(),
 });
 
 assessmentsRouter.put("/interviews/student/:studentId", async (req, res) => {
@@ -125,29 +127,15 @@ assessmentsRouter.put("/interviews/student/:studentId", async (req, res) => {
       input.answers.map((a) => ({ interview_id: interview!.id, question_id: a.questionId, score: a.score })),
       { onConflict: ["interview_id", "question_id"] },
     );
-    // A failed interview takes the student out of the process (eliminated, with the reason);
-    // the interview itself stays recorded and counted on the Selection Process page. A later
-    // correction to "passed" brings them back. Decided here (not by the client) so interviews
-    // saved offline and synced later follow the same rule.
-    const st = await db.one<{ status: string; elimination_reason: string | null }>(
-      "select status, elimination_reason from students where id = $1",
-      [studentId],
-    );
-    if (input.recommendation === "not_recommended") {
-      if (st && ["registered", "exam_completed", "interview_completed"].includes(st.status)) {
-        await updateRows(db, "students", { status: "eliminated", elimination_reason: INTERVIEW_FAIL_REASON }, { id: studentId });
-      }
-    } else if (st?.status === "eliminated" && st.elimination_reason === INTERVIEW_FAIL_REASON) {
-      await updateRows(db, "students", { status: "interview_completed", elimination_reason: null }, { id: studentId });
-    } else if (input.nextStatus !== "eliminated") {
-      await applyNextStatus(db, studentId, input.nextStatus);
-    }
+    // Outcome (migration 0058, apply_interview_outcome): passed → Interview done; failed →
+    // eliminated "Did not pass the Motivation Interview" (out of the working lists, still counted
+    // on Selection Process); a later "passed" undoes it. Also records the interview center.
+    // Runs in the database so the interview team (who can't edit student records) and interviews
+    // synced from offline follow the same rule.
+    await db.exec("select apply_interview_outcome($1, $2, $3)", [studentId, input.recommendation, input.interviewCenterId ?? null]);
   });
   res.json({ ok: true });
 });
-
-/** Must match lib/constants INTERVIEW_FAIL_REASON (used to hide these students from working lists). */
-const INTERVIEW_FAIL_REASON = "Did not pass the Motivation Interview";
 
 // ---------------------------------------------------------------------------
 // Interview question bank (super_admin manages; RLS enforces)

@@ -2,7 +2,7 @@
 
 import { useId, useState } from "react";
 import Link from "next/link";
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, Mic } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { buttonVariants } from "@/components/ui/button";
 import {
@@ -90,6 +90,11 @@ export function StudentCard({
               </span>
             )}
             {province && <span className="truncate text-xs text-muted-foreground">{province}</span>}
+            {s.interview_center_name && (
+              <span className="flex items-center gap-1 truncate text-xs text-muted-foreground" title="Interview center">
+                <Mic className="size-3" /> {s.interview_center_name}
+              </span>
+            )}
           </div>
         </div>
       </div>

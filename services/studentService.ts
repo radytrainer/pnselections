@@ -7,6 +7,8 @@ export type StudentInsert = Database["public"]["Tables"]["students"]["Insert"];
 export type StudentUpdate = Database["public"]["Tables"]["students"]["Update"];
 
 export type StudentListItem = Student & {
+  /** Name of the student's interview center (migration 0058), if assigned. */
+  interview_center_name?: string | null;
   provinces: { name_en: string } | null;
   school_partners: { school_name: string } | null;
   ngo_partners: { organization_name: string } | null;
@@ -64,6 +66,8 @@ export type StudentFilters = {
   search?: string;
   /** Hide students out of the process (failed the written exam or the interview). */
   hideOut?: boolean;
+  /** An interview center id, or "__none__" for students without one. */
+  interviewCenterId?: string;
   page?: number;
   pageSize?: number;
 };
@@ -78,6 +82,7 @@ function filterQuery(filters: Omit<StudentFilters, "page" | "pageSize">) {
     ngoIds: filters.ngoIds,
     search: filters.search,
     hideOut: filters.hideOut ? "1" : undefined,
+    interviewCenterId: filters.interviewCenterId,
   };
 }
 

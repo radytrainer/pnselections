@@ -10,6 +10,10 @@ import { listInterviewCategories, type InterviewCategoryWithQuestions } from "@/
 import { InterviewForm } from "@/components/forms/InterviewForm";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { InterviewFormValues } from "@/features/interview/schema";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { listInterviewCenters, type InterviewCenter } from "@/services/interviewCenterService";
+
+const NONE = "__none__";
 
 /** Shared by /students/[studentId]/interview (online) and /field/interview (Field Mode, works offline). */
 export function InterviewEntry({ studentId, doneHref }: { studentId: string; doneHref: string }) {
@@ -18,12 +22,19 @@ export function InterviewEntry({ studentId, doneHref }: { studentId: string; don
   const [categories, setCategories] = useState<InterviewCategoryWithQuestions[]>([]);
   const [existingAnswers, setExistingAnswers] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
+  const [centers, setCenters] = useState<InterviewCenter[]>([]);
+  const [centerId, setCenterId] = useState("");
 
   useEffect(() => {
     Promise.all([getStudent(studentId), listInterviewCategories()])
       .then(async ([s, cats]) => {
         setStudent(s);
         setCategories(cats);
+        setCenterId(s.interview_center_id ?? "");
+        // Works offline too: Field Mode downloads the cycle's interview centers.
+        listInterviewCenters(s.cycle_id)
+          .then(setCenters)
+          .catch(() => setCenters([]));
         if (s.interviews) {
           setExistingAnswers(await getInterviewAnswers(s.interviews.id));
         }
@@ -41,6 +52,7 @@ export function InterviewEntry({ studentId, doneHref }: { studentId: string; don
         currentStatus: student.status,
         formValues: values,
         questionIds: categories.flatMap((c) => c.questions.map((q) => q.id)),
+        interviewCenterId: centerId || undefined,
       });
       if (queued) setFlash("Saved on this device — it will sync automatically when you're back online");
       toast.success(queued ? "Saved on this device — it will sync automatically when you're back online" : "Interview saved");
@@ -76,6 +88,27 @@ export function InterviewEntry({ studentId, doneHref }: { studentId: string; don
         </h1>
         <p className="text-sm text-muted-foreground">{student.student_code}</p>
       </div>
+      {centers.length > 0 && (
+        <div className="space-y-1.5 rounded-lg border p-3">
+          <label className="text-sm font-medium" htmlFor="interview-center">
+            Interview center
+          </label>
+          <Select value={centerId || NONE} onValueChange={(v) => setCenterId(!v || v === NONE ? "" : v)}>
+            <SelectTrigger id="interview-center" className="w-full sm:w-80">
+              <SelectValue>{(v: string) => (v === NONE ? "Not set" : (centers.find((c) => c.id === v)?.name ?? "Not set"))}</SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={NONE}>Not set</SelectItem>
+              {centers.map((c) => (
+                <SelectItem key={c.id} value={c.id}>
+                  {c.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <p className="text-xs text-muted-foreground">Where this interview takes place. Used to filter students and on the Selection Process page.</p>
+        </div>
+      )}
       <InterviewForm categories={categories} defaultValues={defaultValues} onSubmit={handleSubmit} />
     </div>
   );

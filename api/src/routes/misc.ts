@@ -43,6 +43,20 @@ miscRouter.get("/selection-process/:cycleId", async (req, res) => {
        where s.cycle_id = $1 and s.deleted_at is null`,
       [cycleId],
     );
+    // Interview centers counted live (migration 0058): how many, and students waiting for their
+    // interview who aren't assigned to one yet. Other fields stay hand-typed.
+    const centers = await db.one<{ centers_total: number; not_assigned: number }>(
+      `select (select count(*)::int from interview_centers where cycle_id = $1) as centers_total,
+              (select count(*)::int from students s left join interviews i on i.student_id = s.id
+                 where s.cycle_id = $1 and s.deleted_at is null and s.status = 'exam_completed'
+                   and i.recommendation is null and s.interview_center_id is null) as not_assigned`,
+      [cycleId],
+    );
+    if (centers && centers.centers_total > 0) {
+      const saved = (out.interviewCenters as Record<string, unknown> | null) ?? { cycle_id: cycleId };
+      out.interviewCenters = { ...saved, centers_total: centers.centers_total, applicants_not_assigned: centers.not_assigned };
+      out.interviewCentersLive = true;
+    }
     if (live && (live.attended > 0 || live.still_to_be_done > 0)) {
       const saved = (out.interviewResults as Record<string, unknown> | null) ?? { cycle_id: cycleId, absent: 0 };
       out.interviewResults = {

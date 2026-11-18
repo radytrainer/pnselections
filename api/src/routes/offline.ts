@@ -55,6 +55,8 @@ offlineRouter.get("/bundle", async (req, res) => {
         `select c.*, coalesce((select json_agg(row_to_json(q)) from interview_questions q where q.category_id = c.id), '[]'::json) as interview_questions
          from interview_categories c where c.deleted_at is null order by c.display_order`,
       ),
+      // For the interview form offline: the cycle's interview centers.
+      interviewCenters: cycleId ? await db.rows("select id, cycle_id, name from interview_centers where cycle_id = $1 order by name", [cycleId]) : [],
       students,
       interviewAnswers: Object.fromEntries(answers.map((a) => [a.interview_id, a.answers])),
     };

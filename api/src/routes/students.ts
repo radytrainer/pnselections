@@ -19,7 +19,8 @@ function listSelect(visitorParam?: string) {
   return `s.*, ${PROVINCE}, ${SCHOOL}, ${NGO},
     ${toOne("committee_decisions", "cd", ["decision", "poor_level"], "cd.student_id = s.id", "committee_decisions")},
     ${toMany("social_assessments", "sa", ["visitor_id", "visitor_name", "visit_number"], `sa.student_id = s.id${visitorFilter}`, "social_assessments")},
-    ${DOCUMENTS}`;
+    ${DOCUMENTS},
+    (select ic.name from interview_centers ic where ic.id = s.interview_center_id) as interview_center_name`;
 }
 
 type ListFilters = {
@@ -32,6 +33,8 @@ type ListFilters = {
   search?: string;
   /** Hide students eliminated for failing the written exam or the interview (out of the process). */
   hideOut?: boolean;
+  /** An interview center id, or "__none__" for students without one. */
+  interviewCenterId?: string;
 };
 
 function readFilters(req: Request): ListFilters {
@@ -45,6 +48,7 @@ function readFilters(req: Request): ListFilters {
     ngoIds: ngoIds && ngoIds.length > 0 ? ngoIds : undefined,
     search: qs(req, "search"),
     hideOut: qs(req, "hideOut") === "1",
+    interviewCenterId: qs(req, "interviewCenterId"),
   };
 }
 
@@ -55,6 +59,8 @@ function filterConditions(filters: ListFilters, params: Params, { includeGender 
   if (filters.provinceId === "__none__") where.push("s.province_id is null");
   else if (filters.provinceId) where.push(`s.province_id = ${params.add(filters.provinceId)}`);
   if (filters.status) where.push(`s.status = ${params.add(filters.status)}`);
+  if (filters.interviewCenterId === "__none__") where.push("s.interview_center_id is null");
+  else if (filters.interviewCenterId && isUuid(filters.interviewCenterId)) where.push(`s.interview_center_id = ${params.add(filters.interviewCenterId)}`);
   // Same rule as lib/constants isOutOfProcess.
   if (filters.hideOut && filters.status !== "eliminated") {
     where.push("not (s.status = 'eliminated' and (s.elimination_reason like 'Did not pass the written exam%' or s.elimination_reason = 'Did not pass the Motivation Interview'))");

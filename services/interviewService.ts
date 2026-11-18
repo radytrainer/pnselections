@@ -21,6 +21,8 @@ export async function saveInterview(input: {
   currentStatus: StudentStatus;
   formValues: InterviewFormValues;
   questionIds: string[];
+  /** Where the interview took place (migration 0058); undefined = leave as is. */
+  interviewCenterId?: string | null;
 }) {
   const { formValues, questionIds } = input;
 
@@ -35,6 +37,7 @@ export async function saveInterview(input: {
     recommendation,
     answers: questionIds.map((questionId) => ({ questionId, score: formValues.answers[questionId] })),
     nextStatus: nextStatus !== input.currentStatus ? nextStatus : undefined,
+    interviewCenterId: input.interviewCenterId || undefined,
   });
   /** queued = saved on this device only, synced when back online. */
   return { queued: !!res?.queued };
