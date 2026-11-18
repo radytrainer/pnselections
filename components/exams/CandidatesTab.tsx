@@ -100,6 +100,10 @@ function parseGender(v: unknown): Gender | null {
 export function CandidatesTab({ data, canEdit, reload }: TabProps) {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
+  /** Exam center filter: "" = all, "__none__" = no center, else a center id. */
+  const [centerFilter, setCenterFilter] = useState("");
+  /** Session within the chosen center: "" = all, "__none__" = no session. */
+  const [sessionFilter, setSessionFilter] = useState("");
   const [page, setPage] = useState(1);
   const [selection, setSelection] = useState<RowSelectionState>({});
   const [dialog, setDialog] = useState<null | "add" | "import" | "students" | "assign">(null);
@@ -124,9 +128,18 @@ export function CandidatesTab({ data, canEdit, reload }: TabProps) {
       if (filter === "nosession" && !(c.center_id && !c.session_id)) return false;
       if (filter === "unlinked" && c.student_id) return false;
       if (filter === "linked" && !c.student_id) return false;
+      if (centerFilter === "__none__" ? c.center_id : centerFilter && c.center_id !== centerFilter) return false;
+      if (centerFilter && centerFilter !== "__none__" && sessionFilter && (sessionFilter === "__none__" ? c.session_id : c.session_id !== sessionFilter)) return false;
       return !q || c.exam_number.includes(q) || (c.full_name ?? "").toLowerCase().includes(q) || (c.student?.code ?? "").toLowerCase().includes(q);
     });
-  }, [data.candidates, filter, search]);
+  }, [data.candidates, filter, search, centerFilter, sessionFilter]);
+  const centerCounts = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const c of data.candidates) m.set(c.center_id ?? "__none__", (m.get(c.center_id ?? "__none__") ?? 0) + 1);
+    return m;
+  }, [data.candidates]);
+  const sortedCenters = useMemo(() => [...data.centers].sort((a, b) => a.name.localeCompare(b.name)), [data.centers]);
+  const filterCenter = centerFilter && centerFilter !== "__none__" ? centerById.get(centerFilter) : undefined;
 
   const pages = Math.max(1, Math.ceil(filtered.length / PAGE));
   const current = Math.min(page, pages);
@@ -271,7 +284,7 @@ export function CandidatesTab({ data, canEdit, reload }: TabProps) {
   return (
     <div className="space-y-4">
       <div className="flex flex-col gap-2 xl:flex-row xl:items-center xl:justify-between">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+        <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
           <div className="relative w-full sm:w-72">
             <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input
@@ -304,6 +317,69 @@ export function CandidatesTab({ data, canEdit, reload }: TabProps) {
               ))}
             </SelectContent>
           </Select>
+          {data.centers.length > 0 && (
+            <Select
+              value={centerFilter}
+              onValueChange={(v) => {
+                setCenterFilter(v ?? "");
+                setSessionFilter("");
+                setPage(1);
+              }}
+            >
+              <SelectTrigger className={cn("w-full sm:w-52", centerFilter && "border-primary/40 bg-primary/5")} aria-label="Filter by exam center">
+                <SelectValue>
+                  {(v: string) => (!v ? "All centers" : v === "__none__" ? "No center" : (centerById.get(v)?.name ?? "All centers"))}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="">All centers ({data.candidates.length})</SelectItem>
+                {sortedCenters.map((c) => (
+                  <SelectItem key={c.id} value={c.id}>
+                    {c.name} ({centerCounts.get(c.id) ?? 0})
+                  </SelectItem>
+                ))}
+                <SelectItem value="__none__">No center ({centerCounts.get("__none__") ?? 0})</SelectItem>
+              </SelectContent>
+            </Select>
+          )}
+          {filterCenter && filterCenter.sessions.length > 1 && (
+            <Select
+              value={sessionFilter}
+              onValueChange={(v) => {
+                setSessionFilter(v ?? "");
+                setPage(1);
+              }}
+            >
+              <SelectTrigger className={cn("w-full sm:w-60", sessionFilter && "border-primary/40 bg-primary/5")} aria-label="Filter by session">
+                <SelectValue>
+                  {(v: string) => (!v ? "All sessions" : v === "__none__" ? "No session" : (filterCenter.sessions.find((x) => x.id === v) ? sessionLabel(filterCenter.sessions.find((x) => x.id === v)!) : "All sessions"))}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="">All sessions</SelectItem>
+                {filterCenter.sessions.map((x) => (
+                  <SelectItem key={x.id} value={x.id}>
+                    {sessionLabel(x)}
+                  </SelectItem>
+                ))}
+                <SelectItem value="__none__">No session</SelectItem>
+              </SelectContent>
+            </Select>
+          )}
+          {centerFilter && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-muted-foreground"
+              onClick={() => {
+                setCenterFilter("");
+                setSessionFilter("");
+                setPage(1);
+              }}
+            >
+              <X /> Clear
+            </Button>
+          )}
         </div>
         <div className="flex flex-wrap gap-2">
           <ZipgradeExportMenu data={data} centerById={centerById} />
@@ -350,6 +426,11 @@ export function CandidatesTab({ data, canEdit, reload }: TabProps) {
       </div>
 
       <p className="text-sm text-muted-foreground">
+        {filtered.length !== data.candidates.length && (
+          <span className="font-medium text-foreground">
+            Showing {filtered.length} of {data.candidates.length} ·{" "}
+          </span>
+        )}
         {data.candidates.length} candidates · {data.candidates.filter((c) => !c.center_id).length} not assigned to a center ·{" "}
         {data.candidates.filter((c) => c.student_id).length} linked to students
       </p>
