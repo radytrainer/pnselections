@@ -149,7 +149,14 @@ export function createStudentsFromCandidates(cycleId: string, candidateIds: stri
 }
 
 export function getStudentExam(studentId: string) {
-  return api.get<(Pick<ExamData, "papers" | "sheets" | "rules"> & { candidate: ExamCandidate }) | null>(`/api/v1/written-exams/student/${studentId}`);
+  return api.get<(Pick<ExamData, "papers" | "sheets" | "rules" | "overrides"> & { candidate: ExamCandidate }) | null>(
+    `/api/v1/written-exams/student/${studentId}`,
+  );
+}
+
+/** Sets a manual paper score for a candidate (score null = back to the calculated score). */
+export function setScoreOverride(candidateId: string, paperId: string, score: number | null, reason?: string | null) {
+  return api.put("/api/v1/written-exams/overrides", { candidateId, paperId, score, reason });
 }
 
 /** Saves one answer-key version (e.g. "B"): key letters and main question number per position on that sheet. */

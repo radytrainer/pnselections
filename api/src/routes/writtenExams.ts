@@ -87,7 +87,12 @@ writtenExamsRouter.get("/written-exams", async (req, res) => {
       [cycleId],
     );
     const rules = await db.rows("select * from exam_rules where cycle_id = $1 order by sort_order, created_at", [cycleId]);
-    return { cycle, papers, candidates, sheets, rules, centers };
+    const overrides = await db.rows(
+      `select o.candidate_id, o.paper_id, o.score, o.reason, o.updated_at
+       from exam_score_overrides o join exam_papers p on p.id = o.paper_id where p.cycle_id = $1`,
+      [cycleId],
+    );
+    return { cycle, papers, candidates, sheets, rules, centers, overrides };
   });
   res.json(data);
 });
@@ -911,7 +916,49 @@ writtenExamsRouter.get("/written-exams/student/:studentId", async (req, res) => 
     );
     const sheets = await db.rows("select * from exam_sheets where candidate_id = $1", [(candidate as { id: string }).id]);
     const rules = await db.rows("select * from exam_rules where cycle_id = $1 order by sort_order, created_at", [cycleId]);
-    return { candidate, papers, sheets, rules };
+    const overrides = await db.rows(
+      "select candidate_id, paper_id, score, reason, updated_at from exam_score_overrides where candidate_id = $1",
+      [(candidate as { id: string }).id],
+    );
+    return { candidate, papers, sheets, rules, overrides };
   });
   res.json(data);
+});
+
+/**
+ * Sets (or with score = null removes) a manual score for one candidate and
+ * paper. It replaces the score calculated from the scanned sheet.
+ */
+writtenExamsRouter.put("/written-exams/overrides", async (req, res) => {
+  const input = z
+    .object({
+      candidateId: uuid,
+      paperId: uuid,
+      score: z.number().min(0).max(1000).nullable(),
+      reason: z.string().trim().max(300).nullish(),
+    })
+    .parse(req.body);
+  if (input.score != null && !input.reason) throw badRequest("Give a reason for the manual score");
+  await asUser(req, async (db) => {
+    const cycleId = await paperCycle(db, input.paperId);
+    const candCycle = await db.value<string>("select cycle_id from exam_candidates where id = $1", [input.candidateId]);
+    if (!candCycle) throw notFound("Candidate");
+    if (candCycle !== cycleId) throw badRequest("The candidate and paper are from different cycles");
+    await assertUnlocked(db, cycleId);
+    if (input.score == null) {
+      await deleteRows(db, "exam_score_overrides", { candidate_id: input.candidateId, paper_id: input.paperId });
+      return;
+    }
+    const max = Number(
+      (await db.value<string>("select coalesce(sum(points) filter (where not cancelled), 0) from exam_questions where paper_id = $1", [input.paperId])) ?? 0,
+    );
+    if (max > 0 && input.score > max) throw badRequest(`The score can't be above ${max}, the paper's maximum`);
+    await insertRow(
+      db,
+      "exam_score_overrides",
+      { candidate_id: input.candidateId, paper_id: input.paperId, score: input.score, reason: input.reason, updated_by: await currentUserId(db) },
+      { onConflict: ["candidate_id", "paper_id"] },
+    );
+  });
+  res.json({ ok: true });
 });

@@ -186,6 +186,7 @@ export type ExamData = {
   sheets: ExamSheet[];
   rules: ExamRule[];
   centers: ExamCenter[];
+  overrides?: ExamScoreOverride[];
 };
 
 const num = (v: number | string | null | undefined) => (v == null || v === "" ? 0 : Number(v));
@@ -218,7 +219,12 @@ export type SheetScore = {
   total: number;
   max: number;
   subjects: Record<string, { score: number; max: number }>;
+  /** Set when the total is a manual score (Results → edit) instead of the calculated one. */
+  manual?: { reason: string; calculated: number | null };
 };
+
+/** A manual paper score for one candidate (migration 0056). */
+export type ExamScoreOverride = { candidate_id: string; paper_id: string; score: number | string; reason: string; updated_at?: string };
 
 /** The key version a sheet was answered on, or null for the main key. */
 export function sheetVersion(paper: ExamPaper, sheet: Pick<ExamSheet, "key_version">): ExamKeyVersion | null {
@@ -324,13 +330,18 @@ export type CandidateResult = {
   passed: boolean;
 };
 
-export function evaluate(data: Pick<ExamData, "papers" | "candidates" | "sheets">, rules: ExamRule[]): CandidateResult[] {
+export function evaluate(
+  data: Pick<ExamData, "papers" | "candidates" | "sheets" | "overrides">,
+  rules: ExamRule[],
+): CandidateResult[] {
   const sheetsByCandidate = new Map<string, ExamSheet[]>();
   for (const sh of data.sheets) {
     const list = sheetsByCandidate.get(sh.candidate_id) ?? [];
     list.push(sh);
     sheetsByCandidate.set(sh.candidate_id, list);
   }
+  const overridesByCandidate = new Map<string, ExamScoreOverride[]>();
+  for (const o of data.overrides ?? []) overridesByCandidate.set(o.candidate_id, [...(overridesByCandidate.get(o.candidate_id) ?? []), o]);
   const paperById = new Map(data.papers.map((p) => [p.id, p]));
   const groups = ruleGroups(rules);
 
@@ -339,6 +350,18 @@ export function evaluate(data: Pick<ExamData, "papers" | "candidates" | "sheets"
     for (const sh of sheetsByCandidate.get(candidate.id) ?? []) {
       const paper = paperById.get(sh.paper_id);
       if (paper) scores[paper.id] = scoreSheet(paper, sh);
+    }
+    // A manual score replaces the paper total (subject scores stay as calculated, if there's a sheet).
+    for (const o of overridesByCandidate.get(candidate.id) ?? []) {
+      const paper = paperById.get(o.paper_id);
+      if (!paper) continue;
+      const calc = scores[paper.id];
+      scores[paper.id] = {
+        total: num(o.score),
+        max: calc?.max ?? paperMax(paper),
+        subjects: calc?.subjects ?? {},
+        manual: { reason: o.reason, calculated: calc ? calc.total : null },
+      };
     }
     const outcomes: RuleOutcome[] = rules.map((rule) => {
       const sc = scores[rule.paper_id];

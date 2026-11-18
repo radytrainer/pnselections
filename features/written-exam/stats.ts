@@ -24,7 +24,8 @@ export function examResultStats(data: ExamData) {
   const today = todayIso();
   const sessionDate = new Map(data.centers.flatMap((c) => c.sessions).map((s) => [s.id, s.session_date]));
   const papersSat = new Map<string, Set<string>>();
-  for (const sh of data.sheets) {
+  // A manual score counts as having sat the paper (e.g. a sheet that couldn't be scanned).
+  for (const sh of [...data.sheets, ...(data.overrides ?? [])]) {
     const set = papersSat.get(sh.candidate_id) ?? new Set<string>();
     set.add(sh.paper_id);
     papersSat.set(sh.candidate_id, set);

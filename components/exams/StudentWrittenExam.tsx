@@ -20,7 +20,7 @@ export function StudentWrittenExam({ studentId, onFound }: { studentId: string; 
         if (!alive) return;
         onFound?.(!!d);
         if (!d) return setState(null);
-        const [result] = evaluate({ papers: d.papers, sheets: d.sheets, candidates: [d.candidate] }, d.rules);
+        const [result] = evaluate({ papers: d.papers, sheets: d.sheets, candidates: [d.candidate], overrides: d.overrides }, d.rules);
         // One line per rule group ("… or …"): passed when any rule in it passed.
         const rules = ruleGroups(d.rules).map((g) => ({
           label: groupLabel(d.rules, g, d.papers),
@@ -83,7 +83,13 @@ export function StudentWrittenExam({ studentId, onFound }: { studentId: string; 
                   {s ? round(s.total) : "—"}
                   {s && <span className="text-sm font-normal text-muted-foreground"> / {round(s.max)}</span>}
                 </p>
+                {s?.manual && (
+                  <p className="text-xs text-amber-700 dark:text-amber-400" title={s.manual.reason}>
+                    Manual score{s.manual.calculated != null ? ` (calculated ${round(s.manual.calculated)})` : ""}: {s.manual.reason}
+                  </p>
+                )}
                 {s &&
+                  !s.manual &&
                   p.subjects.map((sub) => (
                     <p key={sub.id} className="flex justify-between text-xs text-muted-foreground">
                       <span>{sub.name}</span>
