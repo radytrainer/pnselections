@@ -29,7 +29,7 @@ async function currentUserId(db: Db) {
 }
 
 /** Throws when the cycle's results are locked (rules/keys/imports frozen). */
-async function assertUnlocked(db: Db, cycleId: string) {
+export async function assertUnlocked(db: Db, cycleId: string) {
   const locked = await db.value<boolean>("select exam_rules_locked from selection_cycles where id = $1", [cycleId]);
   if (locked == null) throw notFound("Cycle");
   if (locked) throw new HttpError(409, "Exam results are locked for this cycle. A Super Admin must unlock them first.");
@@ -565,7 +565,7 @@ writtenExamsRouter.post("/written-exams/candidates/remove", async (req, res) => 
 });
 
 /** Next free exam numbers for a cycle: after the highest existing number, never below `start`. */
-async function nextNumbers(db: Db, cycleId: string, count: number, start?: number, digits?: number) {
+export async function nextNumbers(db: Db, cycleId: string, count: number, start?: number, digits?: number) {
   const max = (await db.value<number>(
     "select coalesce(max(exam_number::bigint), 0) from exam_candidates where cycle_id = $1",
     [cycleId],

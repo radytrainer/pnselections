@@ -17,6 +17,7 @@ import {
   History,
   Gavel,
   LayoutDashboard,
+  Megaphone,
   Map as MapIcon,
   MessageCircleQuestionMark,
   School,
@@ -70,6 +71,13 @@ export const NAV_ITEMS: NavItem[] = [
       "interview_team",
       "home_visit_team",
     ],
+  },
+  {
+    href: "/info-sessions",
+    label: "Information Sessions",
+    icon: Megaphone,
+    // Same roles as the information_sessions RLS policies (0061).
+    roles: ["super_admin", "program_manager", "selection_team"],
   },
   {
     href: "/exams",

@@ -10,6 +10,7 @@ import { adminRouter, sessionRouter } from "./routes/admin";
 import { assessmentsRouter } from "./routes/assessments";
 import { writtenExamsRouter } from "./routes/writtenExams";
 import { interviewCentersRouter } from "./routes/interviewCenters";
+import { informationSessionsRouter, publicRegistrationRouter } from "./routes/informationSessions";
 import { committeeRouter } from "./routes/committee";
 import { filesRouter, uploadsRouter } from "./routes/files";
 import { lookupsRouter } from "./routes/lookups";
@@ -78,6 +79,9 @@ export function createApp() {
   // Public logos/avatars + RLS-checked private student documents.
   app.use("/api/v1/files", filesRouter);
 
+  // Information-session self-registration form (no login; migration 0061).
+  app.use("/api/public", publicRegistrationRouter);
+
   const v1 = express.Router();
   v1.use(requireAuth);
   v1.use(idempotency);
@@ -89,6 +93,7 @@ export function createApp() {
   v1.use(assessmentsRouter);
   v1.use(writtenExamsRouter);
   v1.use(interviewCentersRouter);
+  v1.use(informationSessionsRouter);
   v1.use(partnersRouter);
   v1.use(reportsRouter);
   v1.use(miscRouter);
