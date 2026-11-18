@@ -1,0 +1,1 @@
+{"nodes": [{"id": "$graphify-root$_db_migrations_0042_students_permanent_delete_sql", "label": "0042_students_permanent_delete.sql", "file_type": "code", "source_file": "db/migrations/0042_students_permanent_delete.sql", "source_location": null}], "edges": []}

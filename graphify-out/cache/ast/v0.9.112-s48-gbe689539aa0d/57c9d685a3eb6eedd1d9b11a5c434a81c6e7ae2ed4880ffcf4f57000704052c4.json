@@ -1,0 +1,1 @@
+{"nodes": [{"id": "$graphify-root$_db_migrations_0022_committee_ratings_realtime_sql", "label": "0022_committee_ratings_realtime.sql", "file_type": "code", "source_file": "db/migrations/0022_committee_ratings_realtime.sql", "source_location": null}], "edges": []}
