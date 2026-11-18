@@ -33,11 +33,24 @@ export function SessionDialog({
   const [provinceId, setProvinceId] = useState(session?.province_id ?? "");
   const [centerId, setCenterId] = useState(session?.default_exam_center_id ?? "");
   const [notes, setNotes] = useState(session?.notes ?? "");
+  const [telegram, setTelegram] = useState(session?.telegram_url ?? "");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Accept "t.me/xyz" or "@xyz" too and turn them into a full link.
+  function normalizeTelegram(v: string) {
+    const t = v.trim();
+    if (!t) return "";
+    if (t.startsWith("@")) return `https://t.me/${t.slice(1)}`;
+    if (/^(t\.me|telegram\.me)\//i.test(t)) return `https://${t}`;
+    return t.replace(/^http:\/\//i, "https://");
+  }
+  const telegramUrl = normalizeTelegram(telegram);
+  const telegramOk = !telegramUrl || /^https:\/\/(t\.me|telegram\.me)\/[A-Za-z0-9_+/-]+$/.test(telegramUrl);
+
   async function save() {
     if (!name.trim()) return setError("Give the session a name");
+    if (!telegramOk) return setError("Use a Telegram link like https://t.me/+AbCdEf or https://t.me/groupname");
     setSaving(true);
     setError(null);
     try {
@@ -48,6 +61,7 @@ export function SessionDialog({
         provinceId: provinceId || null,
         defaultExamCenterId: centerId || null,
         notes: notes.trim() || null,
+        telegramUrl: telegramUrl || null,
       });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Couldn't save");
@@ -124,6 +138,25 @@ export function SessionDialog({
               {centers.length === 0
                 ? "No exam centers yet for this cycle — add them in Written Exams → Planning so students can choose one."
                 : "Pre-selected on the form; students can still pick another."}
+            </p>
+          </div>
+          <div className="space-y-1.5">
+            <label htmlFor="is-telegram" className="text-sm font-medium">
+              Telegram group link
+            </label>
+            <Input
+              id="is-telegram"
+              inputMode="url"
+              placeholder="https://t.me/+AbCdEf123"
+              value={telegram}
+              onChange={(e) => setTelegram(e.target.value)}
+              maxLength={300}
+              aria-invalid={!telegramOk || undefined}
+            />
+            <p className={telegramOk ? "text-xs text-muted-foreground" : "text-xs text-destructive"}>
+              {telegramOk
+                ? "Students see a “Join Telegram group” button after they register. Leave empty for none."
+                : "Use a Telegram link like https://t.me/+AbCdEf or https://t.me/groupname"}
             </p>
           </div>
           <div className="space-y-1.5">

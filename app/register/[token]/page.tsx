@@ -2,7 +2,7 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 import { useParams } from "next/navigation";
-import { CalendarDays, CheckCircle2, Loader2, Lock, MapPin, TimerOff } from "lucide-react";
+import { CalendarDays, CheckCircle2, Loader2, Lock, MapPin, Send, TimerOff } from "lucide-react";
 import { Logo } from "@/components/layout/Logo";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -37,6 +37,7 @@ const REASONS: Record<string, string> = {
   dob_required: "Please enter your date of birth. · សូមបញ្ចូលថ្ងៃខែឆ្នាំកំណើត។",
   age: `Only students aged ${MIN_AGE} to ${MAX_AGE} can register. · មានតែសិស្សអាយុពី ${MIN_AGE} ដល់ ${MAX_AGE} ឆ្នាំប៉ុណ្ណោះដែលអាចចុះឈ្មោះបាន។`,
   phone_required: "Please enter your phone number. · សូមបញ្ចូលលេខទូរស័ព្ទ។",
+  school_required: "Please enter your high school. · សូមបញ្ចូលឈ្មោះវិទ្យាល័យ។",
   bad_phone: "Please enter a Smart, Cellcard or Metfone number, e.g. 012 345 678. · សូមបញ្ចូលលេខទូរស័ព្ទ Smart, Cellcard ឬ Metfone។",
   center_required: "Please choose your exam center. · សូមជ្រើសរើសមណ្ឌលប្រឡង។",
   bad_choice: "Please choose again from the list. · សូមជ្រើសរើសម្តងទៀត។",
@@ -88,7 +89,7 @@ export default function RegisterPage() {
   const [values, setValues] = useState<PublicRegistration>(EMPTY);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [done, setDone] = useState<{ name: string; already: boolean } | null>(null);
+  const [done, setDone] = useState<{ name: string; already: boolean; telegram: string | null } | null>(null);
 
   useEffect(() => {
     getPublicForm(token)
@@ -114,12 +115,13 @@ export default function RegisterPage() {
     if (age < MIN_AGE || age > MAX_AGE) return setError(REASONS.age);
     if (!values.phone.trim()) return setError(REASONS.phone_required);
     if (!khmerMobile(values.phone)) return setError(REASONS.bad_phone);
+    if (!values.highSchool.trim()) return setError(REASONS.school_required);
     if (form?.status === "open" && form.centers.length > 0 && !values.examCenterId) return setError(REASONS.center_required);
     setSending(true);
     try {
       const r = await submitPublicRegistration(token, values);
       if (r.ok) {
-        setDone({ name: `${values.firstName.trim()} ${values.lastName.trim()}`, already: !!r.duplicate });
+        setDone({ name: `${values.firstName.trim()} ${values.lastName.trim()}`, already: !!r.duplicate, telegram: r.telegram_url ?? null });
         window.scrollTo({ top: 0 });
       } else if (r.reason === "closed" || r.reason === "expired" || r.reason === "not_found") {
         const name = form?.status === "open" ? form.session.name : "";
@@ -176,6 +178,23 @@ export default function RegisterPage() {
               </p>
               <p className="mt-2 text-sm text-muted-foreground">You are registered for {s.name}. We will contact you about the exam.</p>
             </>
+          )}
+          {done.telegram && (
+            <div className="mt-5 rounded-lg border border-sky-200 bg-sky-50 p-4 dark:border-sky-500/30 dark:bg-sky-500/10">
+              <p className="text-sm" style={{ fontFamily: "var(--font-battambang)" }}>
+                ចូលរួមក្រុម Telegram ដើម្បីទទួលព័ត៌មានអំពីការប្រឡង។
+              </p>
+              <p className="text-sm text-muted-foreground">Join the Telegram group to get news about the exam.</p>
+              <a
+                href={done.telegram}
+                target="_blank"
+                rel="noreferrer"
+                className="mt-3 inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-[#229ED9] px-4 text-base font-medium text-white transition-colors hover:bg-[#1b8cc2]"
+              >
+                <Send className="size-5" />
+                Join Telegram group
+              </a>
+            </div>
           )}
           <Button
             className="mt-5 h-auto min-h-9 max-w-full py-2 whitespace-normal"
@@ -285,15 +304,9 @@ export default function RegisterPage() {
               </p>
             </div>
           </div>
-          <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_7rem]">
-            <div className="space-y-1.5">
-              <Label htmlFor="r-school" km="វិទ្យាល័យ" en="High school" />
-              <Input id="r-school" value={values.highSchool} onChange={set("highSchool")} maxLength={200} className="h-10" />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="r-grade" km="ថ្នាក់ទី" en="Grade" />
-              <Input id="r-grade" inputMode="numeric" placeholder="12" value={values.grade} onChange={set("grade")} maxLength={20} className="h-10" />
-            </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="r-school" km="វិទ្យាល័យ" en="High school" required />
+            <Input id="r-school" value={values.highSchool} onChange={set("highSchool")} maxLength={200} className="h-10" placeholder="Name of your high school (grade 12)" />
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="r-province" km="ខេត្ត/ក្រុង" en="Province" />

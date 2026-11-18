@@ -162,7 +162,7 @@ export function RegistrationsTable({
                   </td>
                   <td className="px-3 py-2">{GENDER[r.gender]}</td>
                   <td className="px-3 py-2">
-                    <p className="truncate">{r.high_school || "—"}{r.grade ? ` · Gr. ${r.grade}` : ""}</p>
+                    <p className="truncate">{r.high_school || "—"}</p>
                     <p className="text-xs text-muted-foreground">{r.province_name ?? ""}</p>
                   </td>
                   <td className="px-3 py-2 tabular-nums">{r.phone || "—"}</td>

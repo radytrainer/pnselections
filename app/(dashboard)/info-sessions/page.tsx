@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import { ArrowLeft, CalendarDays, Link2, Loader2, MapPin, Megaphone, MonitorPlay, Pencil, Plus, Search, Trash2, Users } from "lucide-react";
+import { ArrowLeft, CalendarDays, Link2, Loader2, MapPin, Megaphone, MonitorPlay, Pencil, Plus, Search, Send, Trash2, Users } from "lucide-react";
 import { useRole } from "@/hooks/useRole";
 import { can } from "@/lib/rbac";
 import { useCycleFilter } from "@/hooks/useCycleFilter";
@@ -261,6 +261,15 @@ export default function InformationSessionsPage() {
                       </span>
                     )}
                     {selected.default_exam_center_name && <Badge variant="outline">Exam center: {selected.default_exam_center_name}</Badge>}
+                    {selected.telegram_url ? (
+                      <a href={selected.telegram_url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-sky-700 hover:underline dark:text-sky-400">
+                        <Send className="size-4" /> Telegram group
+                      </a>
+                    ) : (
+                      <button type="button" className="inline-flex items-center gap-1 text-amber-700 hover:underline dark:text-amber-400" onClick={() => setDialog({ session: selected })}>
+                        <Send className="size-4" /> Add Telegram group link
+                      </button>
+                    )}
                   </div>
                   {selected.notes && <p className="mt-2 text-sm whitespace-pre-line text-muted-foreground">{selected.notes}</p>}
                 </div>

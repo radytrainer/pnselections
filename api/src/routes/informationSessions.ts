@@ -35,6 +35,13 @@ const sessionFields = {
   defaultExamCenterId: uuid.nullish(),
   regOpen: z.boolean().optional(),
   regExpiresAt: z.string().datetime({ offset: true }).nullish(),
+  /** Telegram group invite shown after registering (migration 0066). */
+  telegramUrl: z
+    .string()
+    .trim()
+    .max(300)
+    .regex(/^(https:\/\/(t\.me|telegram\.me)\/[A-Za-z0-9_+/-]+)?$/, "Use a Telegram link like https://t.me/+AbCdEf or https://t.me/groupname")
+    .nullish(),
 };
 
 function sessionColumns(input: Partial<Record<keyof typeof sessionFields, unknown>>) {
@@ -47,6 +54,7 @@ function sessionColumns(input: Partial<Record<keyof typeof sessionFields, unknow
     defaultExamCenterId: "default_exam_center_id",
     regOpen: "reg_open",
     regExpiresAt: "reg_expires_at",
+    telegramUrl: "telegram_url",
   };
   const out: Record<string, unknown> = {};
   for (const [k, col] of Object.entries(map)) {
@@ -371,7 +379,7 @@ publicRegistrationRouter.post("/register/:token", async (req, res) => {
     exam_center_id: pick("examCenterId", 36),
   };
   const result = await withClaims(PUBLIC_CLAIMS, (db) =>
-    db.value<{ ok: boolean; reason?: string; duplicate?: boolean; session_id?: string }>("select public_register($1, $2::jsonb)", [t, JSON.stringify(data)]),
+    db.value<{ ok: boolean; reason?: string; duplicate?: boolean; session_id?: string; telegram_url?: string | null }>("select public_register($1, $2::jsonb)", [t, JSON.stringify(data)]),
   );
   const { session_id: sessionId, ...answer } = result ?? { ok: false };
   // Tell any live display for this session (new registrations only).

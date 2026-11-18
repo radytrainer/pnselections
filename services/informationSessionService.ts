@@ -15,6 +15,8 @@ export type InformationSession = {
   reg_token: string;
   reg_open: boolean;
   reg_expires_at: string | null;
+  /** Telegram group invite shown to students after registering. */
+  telegram_url: string | null;
   created_at: string;
   registrations: number;
   girls: number;
@@ -55,6 +57,7 @@ export type SessionInput = {
   defaultExamCenterId?: string | null;
   regOpen?: boolean;
   regExpiresAt?: string | null;
+  telegramUrl?: string | null;
 };
 
 export type LinkState = "open" | "closed" | "expired";
@@ -179,7 +182,7 @@ export async function getPublicForm(token: string): Promise<PublicForm> {
   return r.json();
 }
 
-export async function submitPublicRegistration(token: string, values: PublicRegistration): Promise<{ ok: boolean; reason?: string; duplicate?: boolean }> {
+export async function submitPublicRegistration(token: string, values: PublicRegistration): Promise<{ ok: boolean; reason?: string; duplicate?: boolean; telegram_url?: string | null }> {
   const r = await fetch(`/api/public/register/${encodeURIComponent(token)}`, {
     method: "POST",
     headers: { "content-type": "application/json" },
