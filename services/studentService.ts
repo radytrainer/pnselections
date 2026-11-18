@@ -62,6 +62,8 @@ export type StudentFilters = {
   // means matching all of them, see listNgoFilterOptions.
   ngoIds?: string[];
   search?: string;
+  /** Hide students out of the process (failed the written exam or the interview). */
+  hideOut?: boolean;
   page?: number;
   pageSize?: number;
 };
@@ -75,6 +77,7 @@ function filterQuery(filters: Omit<StudentFilters, "page" | "pageSize">) {
     homeVisitor: filters.homeVisitor,
     ngoIds: filters.ngoIds,
     search: filters.search,
+    hideOut: filters.hideOut ? "1" : undefined,
   };
 }
 

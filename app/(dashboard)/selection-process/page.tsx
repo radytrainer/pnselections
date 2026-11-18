@@ -548,6 +548,7 @@ export default function SelectionProcessPage() {
                   />
                   <InterviewResultsCard
                     stats={stats.interviewResults}
+                    live={stats.interviewLive ?? null}
                     cycleId={cycleId}
                     canEdit={canEdit}
                     onSaved={load}

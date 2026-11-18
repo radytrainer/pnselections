@@ -12,7 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useAuth } from "@/hooks/useAuth";
 import { useOfflineStatus } from "@/hooks/useOfflineStatus";
 import { useRole } from "@/hooks/useRole";
-import { displayStudentStatus, STUDENT_STATUS_BADGE_CLASSES, type StudentStatus } from "@/lib/constants";
+import { displayStudentStatus, isOutOfProcess, STUDENT_STATUS_BADGE_CLASSES, type StudentStatus } from "@/lib/constants";
 import { downloadForOffline, getBundleInfo, getDownloadedStudents, type BundleInfo } from "@/lib/offline/bundle";
 import type { OfflineStudent } from "@/lib/offline/fallback";
 import { takeFlash } from "@/lib/offline/store";
@@ -43,6 +43,7 @@ export default function FieldModePage() {
   const [search, setSearch] = useState("");
   const [province, setProvince] = useState("");
   const [limit, setLimit] = useState(PAGE_SIZE);
+  const [showOut, setShowOut] = useState(false);
 
   const load = useCallback(async () => {
     const [bundleInfo, list] = await Promise.all([getBundleInfo(), getDownloadedStudents()]);
@@ -90,9 +91,12 @@ export default function FieldModePage() {
       .sort((a, b) => (a.name === NO_PROVINCE ? 1 : b.name === NO_PROVINCE ? -1 : a.name.localeCompare(b.name)));
   }, [students]);
 
+  // Students who failed the written exam or the interview are out of the process: hidden unless asked for.
+  const outCount = useMemo(() => students.filter((s) => isOutOfProcess(s.status as string, s.elimination_reason as string | null)).length, [students]);
   const filtered = useMemo(() => {
     const q = search.trim().replace(/\s+/g, " ").toLowerCase();
     return students.filter((s) => {
+      if (!showOut && isOutOfProcess(s.status as string, s.elimination_reason as string | null)) return false;
       const p = provinceOf(s);
       if (province && (province === NO_PROVINCE ? p !== "" : p !== province)) return false;
       if (!q) return true;
@@ -101,7 +105,7 @@ export default function FieldModePage() {
         .toLowerCase()
         .includes(q);
     });
-  }, [students, search, province]);
+  }, [students, search, province, showOut]);
 
   const canSocial = can(role, "enterHomeVisitData");
   const canInterview = can(role, "enterInterviewScores");
@@ -196,6 +200,16 @@ export default function FieldModePage() {
               </span>
             )}
           </div>
+          {outCount > 0 && (
+            <p className="text-xs text-muted-foreground">
+              {showOut
+                ? `Showing ${outCount} student${outCount === 1 ? "" : "s"} who failed the written exam or the interview.`
+                : `${outCount} student${outCount === 1 ? "" : "s"} who failed the written exam or the interview ${outCount === 1 ? "is" : "are"} hidden.`}{" "}
+              <button type="button" className="font-medium text-primary hover:underline" onClick={() => setShowOut((v) => !v)}>
+                {showOut ? "Hide them" : "Show"}
+              </button>
+            </p>
+          )}
 
           <ul className="divide-y rounded-lg border">
             {filtered.slice(0, limit).map((s) => {

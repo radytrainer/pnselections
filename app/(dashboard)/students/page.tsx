@@ -64,6 +64,9 @@ export default function StudentsPage() {
   const [data, setData] = useState<StudentListItem[]>([]);
   const [photoUrls, setPhotoUrls] = useState<Record<string, string>>({});
   const [total, setTotal] = useState(0);
+  /** Show students who failed the written exam / interview (hidden by default). */
+  const [showOut, setShowOut] = useState(false);
+  const [hiddenOut, setHiddenOut] = useState(0);
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -184,19 +187,23 @@ export default function StudentsPage() {
     const seq = ++listSeq.current;
     setLoading(true);
     try {
-      const result = await listStudents({
-        page,
-        pageSize: PAGE_SIZE,
+      const filters = {
         search: search || undefined,
         status: status || undefined,
         homeVisitor: homeVisitor || undefined,
         provinceId: provinceId || undefined,
         ngoIds,
         cycleId: cycleId || undefined,
-      });
+      };
+      // Students out of the process (failed the exam/interview) are hidden unless asked for.
+      const [result, everyone] = await Promise.all([
+        listStudents({ ...filters, page, pageSize: PAGE_SIZE, hideOut: !showOut }),
+        showOut ? null : listStudents({ ...filters, page: 1, pageSize: 1 }),
+      ]);
       if (seq !== listSeq.current) return;
       setData(result.data);
       setTotal(result.total);
+      setHiddenOut(everyone ? Math.max(0, everyone.total - result.total) : 0);
       const photoPaths = result.data
         .map((s) => pickLatestPhotoPath(s.student_documents))
         .filter((p): p is string => !!p);
@@ -207,7 +214,7 @@ export default function StudentsPage() {
     } finally {
       if (seq === listSeq.current) setLoading(false);
     }
-  }, [page, search, status, homeVisitor, provinceId, ngoIds, cycleId]);
+  }, [page, search, status, homeVisitor, provinceId, ngoIds, cycleId, showOut]);
 
   useEffect(() => {
     if (!restored || cyclesLoading) return;
@@ -224,12 +231,13 @@ export default function StudentsPage() {
       provinceId: provinceId || undefined,
       ngoIds,
       cycleId: cycleId || undefined,
+      hideOut: !showOut,
     })
       .then((counts) => {
         if (seq === countSeq.current) setGenderCounts(counts);
       })
       .catch(() => {});
-  }, [restored, cyclesLoading, search, status, homeVisitor, provinceId, ngoIds, cycleId]);
+  }, [restored, cyclesLoading, search, status, homeVisitor, provinceId, ngoIds, cycleId, showOut]);
 
   const selectTriggerClass = "w-full lg:w-44";
 
@@ -264,6 +272,23 @@ export default function StudentsPage() {
               "All students across the active selection pipeline."
             )}
           </p>
+          {(hiddenOut > 0 || showOut) && status !== "eliminated" && (
+            <p className="text-xs text-muted-foreground">
+              {showOut
+                ? "Showing students who failed the written exam or the interview."
+                : `${hiddenOut} student${hiddenOut === 1 ? "" : "s"} who failed the written exam or the interview ${hiddenOut === 1 ? "is" : "are"} hidden (still counted on Selection Process).`}{" "}
+              <button
+                type="button"
+                className="font-medium text-primary hover:underline"
+                onClick={() => {
+                  setShowOut((v) => !v);
+                  setPage(1);
+                }}
+              >
+                {showOut ? "Hide them" : "Show"}
+              </button>
+            </p>
+          )}
         </div>
         <RoleGate capability="createEditStudents">
           <div className="flex shrink-0 items-center gap-2">

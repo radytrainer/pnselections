@@ -13,6 +13,21 @@ export type SelectionProcessStats = {
   examResults: ExamResultStats | null;
   interviewCenters: InterviewCenterStats | null;
   interviewResults: InterviewResultStats | null;
+  /** Counted live from the interviews recorded in the app (null when there are none yet). */
+  interviewLive?: InterviewLive | null;
+};
+
+export type InterviewLive = {
+  attended: number;
+  attended_girls: number;
+  attended_boys: number;
+  passed: number;
+  passed_girls: number;
+  passed_boys: number;
+  failed: number;
+  failed_girls: number;
+  failed_boys: number;
+  still_to_be_done: number;
 };
 
 /** One manually-maintained row per section per cycle (0027) — missing means never edited yet, treat as all-zero. */

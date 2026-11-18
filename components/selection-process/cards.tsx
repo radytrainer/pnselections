@@ -25,6 +25,7 @@ import {
   type ExamResultStats,
   type InformationSessionStats,
   type InterviewCenterStats,
+  type InterviewLive,
   type InterviewResultStats,
 } from "@/services/selectionProcessService";
 
@@ -552,7 +553,13 @@ export function InterviewCentersCard({ stats, cycleId, canEdit, onSaved }: CardP
 // ---------------------------------------------------------------------------
 // 5. Interview results
 // ---------------------------------------------------------------------------
-export function InterviewResultsCard({ stats, cycleId, canEdit, onSaved }: CardProps<InterviewResultStats>) {
+export function InterviewResultsCard({
+  stats,
+  live,
+  cycleId,
+  canEdit,
+  onSaved,
+}: CardProps<InterviewResultStats> & { live?: InterviewLive | null }) {
   const s = interviewResultValues(stats);
 
   const groups: StatsFieldGroup[] = [
@@ -580,9 +587,9 @@ export function InterviewResultsCard({ stats, cycleId, canEdit, onSaved }: CardP
       icon={ClipboardCheck}
       accent="amber"
       title="Interview Results"
-      description="Outcomes of the interview round"
+      description={live ? "Outcomes of the interview round · counted automatically from the interviews recorded" : "Outcomes of the interview round"}
       canEdit={canEdit}
-      groups={groups}
+      groups={live ? groups.map((g) => ({ ...g, fields: g.fields.filter((f) => f.key === "absent") })).filter((g) => g.fields.length) : groups}
       values={s}
       onSave={async (values) => {
         await saveInterviewResultStats(cycleId, values);
@@ -590,18 +597,36 @@ export function InterviewResultsCard({ stats, cycleId, canEdit, onSaved }: CardP
       }}
     >
       <section className="space-y-3">
-        <BlockHeading>Attendance</BlockHeading>
+        <BlockHeading aside={live ? `${formatNumber(live.attended + live.still_to_be_done)} eligible` : undefined}>Attendance</BlockHeading>
         <div className="grid grid-cols-3 gap-2">
-          <Metric value={s.attended} label="Attended" />
+          <Metric value={s.attended} label="Interviewed" />
           <Metric value={s.absent} label="Absent" />
-          <Metric value={s.still_to_be_done} label="To do" tone={s.still_to_be_done > 0 ? "danger" : "default"} />
+          <Metric value={s.still_to_be_done} label="To do" tone={s.still_to_be_done > 0 ? "warning" : "default"} />
         </div>
+        {live && <RateBar label="Interviews done" value={live.attended} total={live.attended + live.still_to_be_done} />}
+        {live && <GenderSplit girls={live.attended_girls} boys={live.attended_boys} />}
       </section>
       <section className="space-y-3">
-        <BlockHeading>Passed</BlockHeading>
-        <Metric value={s.passed} label="Passed the interview" tone="success" emphasis />
+        <BlockHeading>Results</BlockHeading>
+        {live ? (
+          <div className="grid grid-cols-2 gap-2">
+            <Metric value={live.passed} label="Passed" tone="success" emphasis />
+            <Metric value={live.failed} label="Failed" tone={live.failed > 0 ? "danger" : "default"} emphasis />
+          </div>
+        ) : (
+          <Metric value={s.passed} label="Passed the interview" tone="success" emphasis />
+        )}
         <RateBar label="Pass rate" value={s.passed} total={s.attended} />
-        <GenderSplit girls={s.passed_girls} boys={s.passed_boys} />
+        <div className="space-y-1">
+          {live && <p className="text-xs font-medium text-muted-foreground">Passed by gender</p>}
+          <GenderSplit girls={s.passed_girls} boys={s.passed_boys} />
+        </div>
+        {live && (
+          <div className="space-y-1">
+            <p className="text-xs font-medium text-muted-foreground">Failed by gender</p>
+            <GenderSplit girls={live.failed_girls} boys={live.failed_boys} />
+          </div>
+        )}
       </section>
     </StageCard>
   );

@@ -30,6 +30,8 @@ type ListFilters = {
   homeVisitor?: string;
   ngoIds?: string[];
   search?: string;
+  /** Hide students eliminated for failing the written exam or the interview (out of the process). */
+  hideOut?: boolean;
 };
 
 function readFilters(req: Request): ListFilters {
@@ -42,6 +44,7 @@ function readFilters(req: Request): ListFilters {
     homeVisitor: qs(req, "homeVisitor"),
     ngoIds: ngoIds && ngoIds.length > 0 ? ngoIds : undefined,
     search: qs(req, "search"),
+    hideOut: qs(req, "hideOut") === "1",
   };
 }
 
@@ -52,6 +55,10 @@ function filterConditions(filters: ListFilters, params: Params, { includeGender 
   if (filters.provinceId === "__none__") where.push("s.province_id is null");
   else if (filters.provinceId) where.push(`s.province_id = ${params.add(filters.provinceId)}`);
   if (filters.status) where.push(`s.status = ${params.add(filters.status)}`);
+  // Same rule as lib/constants isOutOfProcess.
+  if (filters.hideOut && filters.status !== "eliminated") {
+    where.push("not (s.status = 'eliminated' and (s.elimination_reason like 'Did not pass the written exam%' or s.elimination_reason = 'Did not pass the Motivation Interview'))");
+  }
   if (includeGender && filters.gender) where.push(`s.gender = ${params.add(filters.gender)}`);
   let visitorParam: string | undefined;
   if (filters.homeVisitor) {

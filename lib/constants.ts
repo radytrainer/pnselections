@@ -66,6 +66,21 @@ export function displayStudentStatus(status: StudentStatus, eliminationReason: s
   return eliminationReason && !DECIDED_STATUSES.has(status) ? "eliminated" : status;
 }
 
+/** Elimination reasons written automatically (Written Exams → "Move passers", interview save). */
+export const EXAM_FAIL_REASON_PREFIX = "Did not pass the written exam";
+export const INTERVIEW_FAIL_REASON = "Did not pass the Motivation Interview";
+
+/**
+ * Out of the process: eliminated for failing the written exam or the
+ * Motivation Interview. These are hidden from working lists (Students, Field
+ * Mode) by default; their results stay recorded and counted. Home-visit
+ * eliminations are NOT included — those can still be sent to the committee.
+ */
+export function isOutOfProcess(status: string, eliminationReason: string | null | undefined): boolean {
+  if (status !== "eliminated" || !eliminationReason) return false;
+  return eliminationReason.startsWith(EXAM_FAIL_REASON_PREFIX) || eliminationReason === INTERVIEW_FAIL_REASON;
+}
+
 /** Scholarship eligibility age window — committee decisions are flagged outside this range. */
 export const MIN_ELIGIBLE_AGE = 17;
 export const MAX_ELIGIBLE_AGE = 24;

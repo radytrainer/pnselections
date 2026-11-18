@@ -24,6 +24,39 @@ miscRouter.get("/selection-process/:cycleId", async (req, res) => {
     for (const [key, table] of Object.entries(STATS_TABLES)) {
       out[key] = await db.one(`select * from ${table} where cycle_id = $1`, [cycleId]);
     }
+    // Interview results counted live from the interviews recorded in the app (A1/A2 = passed,
+    // not_recommended = failed; "to do" = students waiting at Exam done). When any exist they
+    // replace the hand-typed numbers; "Absent" stays hand-typed (the app doesn't record it).
+    const live = await db.one<Record<string, number>>(
+      `select
+         count(*) filter (where i.recommendation is not null)::int as attended,
+         count(*) filter (where i.recommendation is not null and s.gender = 'female')::int as attended_girls,
+         count(*) filter (where i.recommendation is not null and s.gender = 'male')::int as attended_boys,
+         count(*) filter (where i.recommendation in ('A1','A2'))::int as passed,
+         count(*) filter (where i.recommendation in ('A1','A2') and s.gender = 'female')::int as passed_girls,
+         count(*) filter (where i.recommendation in ('A1','A2') and s.gender = 'male')::int as passed_boys,
+         count(*) filter (where i.recommendation = 'not_recommended')::int as failed,
+         count(*) filter (where i.recommendation = 'not_recommended' and s.gender = 'female')::int as failed_girls,
+         count(*) filter (where i.recommendation = 'not_recommended' and s.gender = 'male')::int as failed_boys,
+         count(*) filter (where i.recommendation is null and s.status = 'exam_completed')::int as still_to_be_done
+       from students s left join interviews i on i.student_id = s.id
+       where s.cycle_id = $1 and s.deleted_at is null`,
+      [cycleId],
+    );
+    if (live && (live.attended > 0 || live.still_to_be_done > 0)) {
+      const saved = (out.interviewResults as Record<string, unknown> | null) ?? { cycle_id: cycleId, absent: 0 };
+      out.interviewResults = {
+        ...saved,
+        attended: live.attended,
+        still_to_be_done: live.still_to_be_done,
+        passed: live.passed,
+        passed_girls: live.passed_girls,
+        passed_boys: live.passed_boys,
+      };
+      out.interviewLive = live;
+    } else {
+      out.interviewLive = null;
+    }
     return out;
   });
   res.json(result);

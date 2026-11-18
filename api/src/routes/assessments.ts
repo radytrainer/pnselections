@@ -125,10 +125,29 @@ assessmentsRouter.put("/interviews/student/:studentId", async (req, res) => {
       input.answers.map((a) => ({ interview_id: interview!.id, question_id: a.questionId, score: a.score })),
       { onConflict: ["interview_id", "question_id"] },
     );
-    await applyNextStatus(db, studentId, input.nextStatus);
+    // A failed interview takes the student out of the process (eliminated, with the reason);
+    // the interview itself stays recorded and counted on the Selection Process page. A later
+    // correction to "passed" brings them back. Decided here (not by the client) so interviews
+    // saved offline and synced later follow the same rule.
+    const st = await db.one<{ status: string; elimination_reason: string | null }>(
+      "select status, elimination_reason from students where id = $1",
+      [studentId],
+    );
+    if (input.recommendation === "not_recommended") {
+      if (st && ["registered", "exam_completed", "interview_completed"].includes(st.status)) {
+        await updateRows(db, "students", { status: "eliminated", elimination_reason: INTERVIEW_FAIL_REASON }, { id: studentId });
+      }
+    } else if (st?.status === "eliminated" && st.elimination_reason === INTERVIEW_FAIL_REASON) {
+      await updateRows(db, "students", { status: "interview_completed", elimination_reason: null }, { id: studentId });
+    } else if (input.nextStatus !== "eliminated") {
+      await applyNextStatus(db, studentId, input.nextStatus);
+    }
   });
   res.json({ ok: true });
 });
+
+/** Must match lib/constants INTERVIEW_FAIL_REASON (used to hide these students from working lists). */
+const INTERVIEW_FAIL_REASON = "Did not pass the Motivation Interview";
 
 // ---------------------------------------------------------------------------
 // Interview question bank (super_admin manages; RLS enforces)
