@@ -20,9 +20,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { StudentAvatar } from "@/components/students/StudentAvatar";
-import { buildNotes, buildSections, buildVac, type Need, type Row } from "@/components/committee/SocialFormSummary";
-
-type FieldNote = ReturnType<typeof buildNotes>[number];
+import { buildSections, buildVac, type Need, type Row } from "@/components/committee/SocialFormSummary";
 import {
   CATEGORY_BADGE_CLASSES,
   CATEGORY_LABELS,
@@ -47,7 +45,6 @@ type SectionSlide = { kind: "section"; title: string; icon: LucideIcon; rows: Ro
 type Slide =
   | { kind: "overview"; title: string; icon: LucideIcon }
   | SectionSlide
-  | { kind: "notes"; title: string; icon: LucideIcon; rows: Row[]; comments: string | null; notes: FieldNote[] }
   | { kind: "summary"; title: string; icon: LucideIcon };
 
 /** A row with where it lives, so summary/overview items can jump to it. */
@@ -152,21 +149,7 @@ function PresentationView({
     for (const sec of buildSections(assessment)) {
       if (sec.rows.length) list.push({ kind: "section", title: sec.title, icon: sec.icon, rows: sec.rows });
     }
-    const noteRows = [
-      { label: "Poverty Certificate", value: assessment.poverty_certificate ?? "" },
-      { label: "Distance from Town", value: assessment.distance_from_town ?? "" },
-    ].filter((r) => r.value);
-    const fieldNotes = buildNotes(assessment);
-    if (noteRows.length || assessment.visitor_comments?.trim() || fieldNotes.length) {
-      list.push({
-        kind: "notes",
-        title: "Notes & comments",
-        icon: MessageSquareText,
-        rows: noteRows,
-        comments: assessment.visitor_comments?.trim() || null,
-        notes: fieldNotes,
-      });
-    }
+    // Notes stay in their own section's tiles; the visitor's overall comment is on the overview and summary.
     list.push({ kind: "summary", title: "Summary", icon: ClipboardCheck });
     return list;
   }, [assessment, vac]);
@@ -183,8 +166,6 @@ function PresentationView({
     return out;
   }, [slides]);
   const concerns = located.filter((l) => l.need === "high");
-  const watch = located.filter((l) => l.need === "medium");
-  const strengths = located.filter((l) => l.need === "low");
 
   const last = slides.length - 1;
   const go = useCallback(
@@ -240,8 +221,13 @@ function PresentationView({
   }, [index]);
 
   const slide = slides[index];
-  const notesIndex = slides.findIndex((s) => s.kind === "notes");
-  const notesSlide = notesIndex >= 0 ? (slides[notesIndex] as Extract<Slide, { kind: "notes" }>) : null;
+  const comments = assessment.visitor_comments?.trim() || null;
+  const facts = [
+    { label: "Poverty certificate", value: assessment.poverty_certificate ?? "" },
+    { label: "Distance from town", value: assessment.distance_from_town ?? "" },
+  ].filter((f) => f.value);
+  // Areas in slide order, for the summary's findings table.
+  const areas = slides.flatMap((s, i) => (s.kind === "section" ? [{ title: s.title, icon: s.icon, slide: i, total: s.rows.length }] : []));
 
   // ---- Fit to screen: shrink the text (everything is sized in em) until the slide fits without scrolling.
   const mainRef = useRef<HTMLElement>(null);
@@ -397,26 +383,25 @@ function PresentationView({
               concerns={concerns}
               onJump={(l) => go(l.slide, l.row)}
               onSeeAll={() => go(last)}
-              comments={notesSlide?.comments ?? null}
-              noteCount={notesSlide?.notes.length ?? 0}
-              onNotes={notesIndex >= 0 ? () => go(notesIndex) : undefined}
+              comments={comments}
+              facts={facts}
             />
           )}
           {slide.kind === "section" && <SectionSlideView slide={slide} spot={spot} onSpot={setSpot} />}
-          {slide.kind === "notes" && <NotesSlide slide={slide} />}
           {slide.kind === "summary" && (
             <SummarySlide
-              concerns={concerns}
-              watch={watch}
-              strengths={strengths}
-              scoreLine={`${assessment.final_score} pts · ${scoreLabel}`}
+              located={located}
+              areas={areas}
+              score={assessment.final_score ?? 0}
+              scoreLabel={scoreLabel}
               scoreClass={scoreClass}
-              vacLine={vac.tier ? `${assessment.vac_total_score}/36 · ${VAC_TIER_LABELS[vac.tier]}` : null}
+              vacScore={vac.tier ? assessment.vac_total_score : null}
+              vacLabel={vac.tier ? VAC_TIER_LABELS[vac.tier] : null}
               vacClass={vac.tier ? VAC_TIER_BADGE_CLASSES[vac.tier] : ""}
               onJump={(l) => go(l.slide, l.row)}
-              comments={notesSlide?.comments ?? null}
-              noteCount={notesSlide?.notes.length ?? 0}
-              onNotes={notesIndex >= 0 ? () => go(notesIndex) : undefined}
+              onArea={(i) => go(i)}
+              comments={comments}
+              facts={facts}
             />
           )}
         </div>
@@ -600,69 +585,6 @@ function SectionSlideView({ slide, spot, onSpot }: { slide: SectionSlide; spot: 
   );
 }
 
-/**
- * Every comment from the Social Form on one slide: the visitor's overall
- * comments first, then each note grouped by section, next to the answer it
- * explains.
- */
-function NotesSlide({ slide }: { slide: Extract<Slide, { kind: "notes" }> }) {
-  const groups = new Map<string, FieldNote[]>();
-  for (const n of slide.notes) groups.set(n.section, [...(groups.get(n.section) ?? []), n]);
-  return (
-    <section className="space-y-[1em]">
-      <SlideTitle
-        icon={slide.icon}
-        title={slide.title}
-        right={
-          <div className="flex flex-wrap gap-[0.4em]">
-            {slide.rows.map((r) => (
-              <span key={r.label} className="rounded-full border bg-card px-[0.8em] py-[0.25em] text-[0.85em]">
-                <span className="text-muted-foreground">{r.label}:</span> <span className="font-medium">{r.value}</span>
-              </span>
-            ))}
-          </div>
-        }
-      />
-      {slide.comments && (
-        <figure className="relative rounded-2xl border-l-[0.35em] border-primary bg-card p-[1.2em] pl-[1.4em] shadow-sm">
-          <figcaption className="mb-[0.4em] text-[0.75em] font-medium tracking-wide text-muted-foreground uppercase">Home visitor&apos;s overall comments</figcaption>
-          <blockquote className="text-[1.2em] leading-relaxed whitespace-pre-line">{slide.comments}</blockquote>
-        </figure>
-      )}
-      {groups.size > 0 ? (
-        <div className="columns-1 gap-[1em] md:columns-2 [&>*]:mb-[1em] [&>*]:break-inside-avoid">
-          {[...groups.entries()].map(([section, notes]) => {
-            const Icon = notes[0].icon;
-            return (
-              <div key={section} className="rounded-xl border bg-card shadow-sm">
-                <p className="flex items-center gap-[0.45em] border-b px-[1em] py-[0.55em] text-[0.8em] font-semibold tracking-wide text-muted-foreground uppercase">
-                  <Icon className="size-[1.1em] text-primary" /> {section}
-                </p>
-                <ul className="divide-y">
-                  {notes.map((n) => (
-                    <li key={n.label} className="px-[1em] py-[0.6em]">
-                      <p className="flex flex-wrap items-baseline gap-x-[0.5em] text-[0.95em]">
-                        <span className="font-medium">{n.label}</span>
-                        {n.answer && <span className="text-muted-foreground">· {n.answer}</span>}
-                      </p>
-                      <p className="mt-[0.2em] flex gap-[0.4em] leading-snug">
-                        <MessageSquareText className="mt-[0.2em] size-[0.95em] shrink-0 text-muted-foreground" aria-hidden />
-                        <span className="italic">{n.note}</span>
-                      </p>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            );
-          })}
-        </div>
-      ) : (
-        !slide.comments && <p className="text-[0.95em] text-muted-foreground">No notes were written on this form.</p>
-      )}
-    </section>
-  );
-}
-
 /** Horizontal scale with labelled bands and a marker for the value. */
 function Gauge({
   value,
@@ -715,8 +637,7 @@ function OverviewSlide({
   onJump,
   onSeeAll,
   comments,
-  noteCount,
-  onNotes,
+  facts,
 }: {
   student: PresentationStudent;
   assessment: SocialAssessmentRow;
@@ -727,8 +648,7 @@ function OverviewSlide({
   onJump: (l: Located) => void;
   onSeeAll: () => void;
   comments: string | null;
-  noteCount: number;
-  onNotes?: () => void;
+  facts: { label: string; value: string }[];
 }) {
   const score = assessment.final_score ?? 0;
   return (
@@ -864,30 +784,26 @@ function OverviewSlide({
           )}
         </div>
 
-        {(comments || noteCount > 0) && (
+        {(comments || facts.length > 0) && (
           <div className="rounded-2xl border-l-[0.35em] border-primary bg-card p-[1.1em] pl-[1.2em] shadow-sm">
             <div className="mb-[0.4em] flex flex-wrap items-center justify-between gap-2">
               <p className="flex items-center gap-[0.4em] text-[1em] font-medium">
-                <MessageSquareText className="size-[1em] text-primary" /> Home visitor&apos;s comments
+                <MessageSquareText className="size-[1em] text-primary" /> Home visitor&apos;s overall comment
               </p>
-              {noteCount > 0 && onNotes && (
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onNotes();
-                  }}
-                  className="text-[0.85em] font-medium text-primary hover:underline"
-                >
-                  All {noteCount} note{noteCount === 1 ? "" : "s"} →
-                </button>
+              {facts.length > 0 && (
+                <p className="text-[0.82em] text-muted-foreground">
+                  {facts.map((f, i) => (
+                    <span key={f.label}>
+                      {i > 0 && " · "}
+                      {f.label}: <span className="font-medium text-foreground">{f.value}</span>
+                    </span>
+                  ))}
+                </p>
               )}
             </div>
-            {comments ? (
-              <p className="line-clamp-4 text-[0.98em] leading-relaxed whitespace-pre-line">{comments}</p>
-            ) : (
-              <p className="text-[0.9em] text-muted-foreground">No overall comment; {noteCount} note{noteCount === 1 ? "" : "s"} on individual answers.</p>
-            )}
+            <p className={cn("line-clamp-4 text-[0.98em] leading-relaxed whitespace-pre-line", !comments && "text-muted-foreground")}>
+              {comments ?? "No overall comment was written."}
+            </p>
           </div>
         )}
       </div>
@@ -895,119 +811,197 @@ function OverviewSlide({
   );
 }
 
+/**
+ * Closing slide for the committee: the key figures in one row, the findings
+ * grouped by area (concerns, then points to watch, then what's OK), and the home
+ * visitor's overall comment. Everything fits on one screen.
+ */
 function SummarySlide({
-  concerns,
-  watch,
-  strengths,
-  scoreLine,
+  located,
+  areas,
+  score,
+  scoreLabel,
   scoreClass,
-  vacLine,
+  vacScore,
+  vacLabel,
   vacClass,
   onJump,
+  onArea,
   comments,
-  noteCount,
-  onNotes,
+  facts,
 }: {
-  concerns: Located[];
-  watch: Located[];
-  strengths: Located[];
-  scoreLine: string;
+  located: Located[];
+  areas: { title: string; icon: LucideIcon; slide: number; total: number }[];
+  score: number;
+  scoreLabel: string;
   scoreClass: string;
-  vacLine: string | null;
+  vacScore: number | null;
+  vacLabel: string | null;
   vacClass: string;
   onJump: (l: Located) => void;
+  onArea: (slide: number) => void;
   comments: string | null;
-  noteCount: number;
-  onNotes?: () => void;
+  facts: { label: string; value: string }[];
 }) {
-  const column = (need: Need, title: string, items: Located[], split = false) => {
-    const n = NEED[need];
+  const count = (n: Need) => located.filter((l) => l.need === n).length;
+  const rows = areas
+    .map((a) => {
+      const items = located.filter((l) => l.slide === a.slide);
+      return {
+        ...a,
+        high: items.filter((l) => l.need === "high"),
+        medium: items.filter((l) => l.need === "medium"),
+        low: items.filter((l) => l.need === "low"),
+      };
+    })
+    .filter((r) => r.high.length + r.medium.length + r.low.length > 0)
+    // Areas with the most concerns first, so the discussion starts where it matters.
+    .sort((a, b) => b.high.length - a.high.length || b.medium.length - a.medium.length);
+
+  const stat = (label: string, value: React.ReactNode, sub: React.ReactNode, accent?: string) => (
+    <div className="min-w-0 rounded-xl border bg-card px-[1em] py-[0.7em] shadow-sm">
+      <p className="text-[0.72em] font-medium tracking-wide text-muted-foreground uppercase">{label}</p>
+      <p className={cn("mt-[0.1em] text-[1.9em] leading-none font-semibold tabular-nums", accent)}>{value}</p>
+      <div className="mt-[0.35em] text-[0.8em]">{sub}</div>
+    </div>
+  );
+  const needStat = (n: Need, label: string) => {
+    const N = NEED[n];
+    return stat(
+      label,
+      count(n),
+      <span className={cn("inline-flex items-center gap-[0.3em] rounded-full px-[0.6em] py-[0.1em] font-medium", N.pill)}>
+        <N.icon className="size-[1em]" /> {N.label}
+      </span>,
+    );
+  };
+
+  const item = (l: Located) => {
+    const N = NEED[l.need!];
     return (
-      <div className="flex min-w-0 flex-col rounded-2xl border bg-card shadow-sm">
-        <div className={cn("flex items-center justify-between gap-2 rounded-t-2xl px-[1em] py-[0.7em]", n.tile)}>
-          <p className="flex items-center gap-[0.4em] text-[1em] font-medium">
-            <n.icon className="size-[1em]" />
-            {title}
-          </p>
-          <span className={cn("rounded-full px-[0.6em] py-[0.1em] text-[0.8em] font-medium tabular-nums", n.pill)}>{items.length}</span>
-        </div>
-        {items.length === 0 ? (
-          <p className="p-[1em] text-[0.9em] text-muted-foreground">None</p>
-        ) : (
-          // No inner scrolling: the whole slide shrinks to fit the screen instead.
-          <ul className={cn(split ? "gap-x-[1em] px-[0.4em] sm:columns-2" : "divide-y")}>
-            {items.map((l) => (
-              <li key={`${l.section}-${l.label}`} className={cn(split && "break-inside-avoid border-b border-border/60")}>
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onJump(l);
-                  }}
-                  title={`${l.section}${l.note ? ` — note: ${l.note}` : ""} — click to open`}
-                  className={cn(
-                    "block w-full py-[0.4em] text-left text-[0.92em] leading-snug transition hover:bg-muted/60",
-                    split ? "px-[0.6em]" : "px-[1em]",
-                  )}
-                >
-                  <span className="font-medium">{l.label}</span>
-                  <span className="text-muted-foreground"> · {l.value}</span>
-                  {l.note && <MessageSquareText className="ml-[0.35em] inline size-[0.9em] align-[-0.1em] text-muted-foreground" aria-label="Has a note" />}
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
+      <li key={`${l.section}-${l.label}`} className="break-inside-avoid">
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onJump(l);
+          }}
+          title="Open this answer"
+          className="flex w-full items-start gap-[0.4em] rounded-md px-[0.3em] py-[0.15em] text-left leading-snug transition hover:bg-muted/70"
+        >
+          <N.icon
+            className={cn(
+              "mt-[0.2em] size-[0.95em] shrink-0",
+              l.need === "high" ? "text-rose-600" : l.need === "medium" ? "text-amber-600" : "text-emerald-600",
+            )}
+            aria-label={N.label}
+          />
+          <span>
+            <span className="font-medium">{l.label}</span>
+            <span className="text-muted-foreground">: {l.value}</span>
+          </span>
+        </button>
+      </li>
     );
   };
 
   return (
-    <section>
-      <SlideTitle
-        icon={ClipboardCheck}
-        title="Summary for the committee"
-        right={
-          <div className="flex flex-wrap gap-[0.4em] text-[0.95em]">
-            <span className={cn("rounded-full px-[0.75em] py-[0.25em] text-[0.85em] font-medium", scoreClass)}>{scoreLine}</span>
-            {vacLine && <span className={cn("rounded-full px-[0.75em] py-[0.25em] text-[0.85em] font-medium", vacClass)}>{vacLine}</span>}
-          </div>
-        }
-      />
-      {concerns.length > 8 ? (
-        // Many concerns: give them two-thirds of the width in two columns; the shorter lists stack beside them.
-        <div className="grid items-start gap-[1em] md:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
-          {column("high", "Concerns", concerns, true)}
-          <div className="grid gap-[1em]">
-            {column("medium", "To watch", watch)}
-            {column("low", "Strengths", strengths)}
-          </div>
-        </div>
-      ) : (
-        <div className="grid items-start gap-[1em] md:grid-cols-3">
-          {column("high", "Concerns", concerns)}
-          {column("medium", "To watch", watch)}
-          {column("low", "Strengths", strengths)}
-        </div>
-      )}
-      {(comments || noteCount > 0) && (
-        <div className="mt-[1em] rounded-2xl border-l-[0.35em] border-primary bg-card p-[1em] pl-[1.2em] shadow-sm">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <p className="text-[0.75em] font-medium tracking-wide text-muted-foreground uppercase">Home visitor&apos;s overall comments</p>
-            {noteCount > 0 && onNotes && (
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onNotes();
-                }}
-                className="inline-flex items-center gap-[0.3em] text-[0.85em] font-medium text-primary hover:underline"
-              >
-                <MessageSquareText className="size-[1em]" /> All {noteCount} note{noteCount === 1 ? "" : "s"} →
-              </button>
-            )}
-          </div>
-          <p className="mt-[0.3em] text-[1.02em] leading-relaxed whitespace-pre-line">{comments || <span className="text-muted-foreground">No overall comment.</span>}</p>
+    <section className="space-y-[1em]">
+      <SlideTitle icon={ClipboardCheck} title="Summary for the committee" />
+
+      <div className="grid grid-cols-2 gap-[0.7em] md:grid-cols-5">
+        {stat("Poverty score", score, <span className={cn("rounded-full px-[0.6em] py-[0.1em] font-medium", scoreClass)}>{scoreLabel}</span>)}
+        {stat(
+          "Vulnerability",
+          vacScore != null ? (
+            <>
+              {vacScore}
+              <span className="text-[0.5em] font-medium text-muted-foreground">/36</span>
+            </>
+          ) : (
+            "—"
+          ),
+          vacLabel ? <span className={cn("rounded-full px-[0.6em] py-[0.1em] font-medium", vacClass)}>{vacLabel}</span> : <span className="text-muted-foreground">Not recorded</span>,
+        )}
+        {needStat("high", "Concerns")}
+        {needStat("medium", "To watch")}
+        {needStat("low", "Strengths")}
+      </div>
+
+      <div className="overflow-hidden rounded-xl border bg-card shadow-sm">
+        <table className="w-full border-collapse text-[0.9em]">
+          <thead>
+            <tr className="border-b bg-muted/50 text-left text-[0.78em] tracking-wide text-muted-foreground uppercase">
+              <th className="w-[21%] px-[1em] py-[0.55em] font-medium">Area · rating</th>
+              <th className="px-[0.6em] py-[0.55em] font-medium">Findings</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => {
+              // Concerns first, then points to watch, then what's OK (green ✓).
+              const shown = [...r.high, ...r.medium, ...r.low];
+              return (
+                <tr key={r.title} className="border-b align-top last:border-b-0">
+                  <td className="px-[1em] py-[0.55em]">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onArea(r.slide);
+                      }}
+                      className="flex items-center gap-[0.45em] text-left font-medium hover:text-primary"
+                      title="Open this section"
+                    >
+                      <r.icon className="size-[1.05em] shrink-0 text-primary" />
+                      {r.title}
+                    </button>
+                    <div className="mt-[0.35em] flex flex-wrap gap-[0.3em] pl-[1.5em]">
+                      {(["high", "medium", "low"] as const).map((n) => {
+                        const k = r[n].length;
+                        if (!k) return null;
+                        const N = NEED[n];
+                        return (
+                          <span
+                            key={n}
+                            className={cn("inline-flex items-center gap-[0.25em] rounded-full px-[0.5em] py-[0.05em] text-[0.82em] font-medium tabular-nums", N.pill)}
+                            title={`${k} ${N.label.toLowerCase()}`}
+                          >
+                            <N.icon className="size-[0.95em]" /> {k}
+                          </span>
+                        );
+                      })}
+                    </div>
+                  </td>
+                  <td className="px-[0.6em] py-[0.45em]">
+                    <ul className={cn("gap-x-[1.4em]", shown.length > 2 && "lg:columns-2", shown.length > 6 && "xl:columns-3")}>{shown.map(item)}</ul>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      {(comments || facts.length > 0) && (
+        <div className="grid gap-[0.7em] md:grid-cols-[minmax(0,1fr)_auto]">
+          <figure className="rounded-xl border-l-[0.3em] border-primary bg-card px-[1.1em] py-[0.75em] shadow-sm">
+            <figcaption className="flex items-center gap-[0.4em] text-[0.75em] font-medium tracking-wide text-muted-foreground uppercase">
+              <MessageSquareText className="size-[1.1em]" /> Home visitor&apos;s overall comment
+            </figcaption>
+            <blockquote className={cn("mt-[0.3em] leading-relaxed whitespace-pre-line", !comments && "text-muted-foreground")}>
+              {comments ?? "No overall comment was written."}
+            </blockquote>
+          </figure>
+          {facts.length > 0 && (
+            <dl className="flex flex-col justify-center gap-[0.4em] rounded-xl border bg-card px-[1.1em] py-[0.75em] text-[0.9em] shadow-sm">
+              {facts.map((f) => (
+                <div key={f.label}>
+                  <dt className="text-[0.8em] text-muted-foreground">{f.label}</dt>
+                  <dd className="font-medium">{f.value}</dd>
+                </div>
+              ))}
+            </dl>
+          )}
         </div>
       )}
     </section>

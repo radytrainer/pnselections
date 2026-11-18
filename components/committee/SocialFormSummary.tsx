@@ -216,15 +216,6 @@ export function buildSections(a: SocialAssessmentRow) {
   ];
 }
 
-/** Every free-text note the home visitor wrote, with where it belongs (for the "Notes & comments" slide). */
-export function buildNotes(a: SocialAssessmentRow) {
-  return buildSections(a).flatMap((sec) =>
-    sec.rows
-      .filter((r) => r.note || r.noteOnly)
-      .map((r) => ({ section: sec.title, icon: sec.icon, label: r.label, answer: r.note ? r.value : "", note: r.note ?? r.value })),
-  );
-}
-
 /** Vulnerability Assessment Checklist rows + tier, shared with the presentation. */
 export function buildVac(a: SocialAssessmentRow) {
   const VAC_NEED: Record<number, Need> = { 1: "high", 2: "medium", 3: "low" };
