@@ -39,6 +39,10 @@ export type IsRegistration = {
   exam_center_name: string | null;
   candidate_id: string | null;
   exam_number: string | null;
+  /** Exam no. of an existing candidate with the same name + birth date (not yet added). */
+  duplicate_candidate?: string | null;
+  /** When an earlier registration of the same person was made (same name + birth date or phone). */
+  duplicate_of_registration?: string | null;
   created_at: string;
 };
 
@@ -113,7 +117,7 @@ export function removeRegistrations(ids: string[]) {
 }
 
 export function addRegistrationsToCandidates(ids: string[]) {
-  return api.post<{ added: number; skipped: number; first?: string; last?: string }>("/api/v1/is-registrations/to-candidates", { ids });
+  return api.post<{ added: number; matched?: number; skipped: number; first?: string; last?: string }>("/api/v1/is-registrations/to-candidates", { ids });
 }
 
 export type LiveRegistrations = {

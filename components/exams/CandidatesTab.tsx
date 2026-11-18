@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import { ArrowRightLeft, ChevronDown, ChevronLeft, ChevronRight, Download, FileUp, Link2, Pencil, Search, Trash2, UserPlus, Users, X } from "lucide-react";
+import { ArrowRightLeft, ChevronDown, ChevronLeft, ChevronRight, Download, FileUp, Pencil, Search, Trash2, UserPlus, X } from "lucide-react";
 import type { ColumnDef, RowSelectionState } from "@tanstack/react-table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -62,9 +62,7 @@ async function downloadCandidateTemplate() {
 import { candidateGender, sessionLabel, type ExamCandidate, type ExamData, type Gender } from "@/features/written-exam/scoring";
 import {
   addCandidates,
-  addCandidatesFromStudents,
   assignCandidates,
-  autoLinkCandidates,
   deleteCandidate,
   editCandidate,
   listCycleStudents,
@@ -106,7 +104,7 @@ export function CandidatesTab({ data, canEdit, reload }: TabProps) {
   const [sessionFilter, setSessionFilter] = useState("");
   const [page, setPage] = useState(1);
   const [selection, setSelection] = useState<RowSelectionState>({});
-  const [dialog, setDialog] = useState<null | "add" | "import" | "students" | "assign">(null);
+  const [dialog, setDialog] = useState<null | "add" | "import" | "assign">(null);
   /** Candidates about to be removed: all of them, or the selected ids. */
   const [removing, setRemoving] = useState<"all" | string[] | null>(null);
   /** Candidates being moved to another room of their exam center. */
@@ -391,30 +389,6 @@ export function CandidatesTab({ data, canEdit, reload }: TabProps) {
               <Button variant="outline" onClick={() => setDialog("import")}>
                 <FileUp /> Import list
               </Button>
-              <Button variant="outline" onClick={() => setDialog("students")}>
-                <Users /> Add from students
-              </Button>
-              <Button
-                variant="outline"
-                disabled={busy}
-                onClick={async () => {
-                  setBusy(true);
-                  try {
-                    const r = await autoLinkCandidates(data.cycle.id);
-                    toast.success(
-                      `Linked ${r.linked} candidate${r.linked === 1 ? "" : "s"} to students by name` +
-                        (r.ambiguous ? `; ${r.ambiguous} had several possible students and were left for you` : ""),
-                    );
-                    await reload();
-                  } catch (e) {
-                    toast.error(e instanceof Error ? e.message : "Linking failed");
-                  } finally {
-                    setBusy(false);
-                  }
-                }}
-              >
-                <Link2 /> Link by name
-              </Button>
               {data.candidates.length > 0 && (
                 <Button variant="ghost" className="text-rose-700 hover:bg-rose-50 hover:text-rose-800 dark:text-rose-400 dark:hover:bg-rose-500/10" onClick={() => setRemoving("all")}>
                   <Trash2 /> Remove all
@@ -514,7 +488,6 @@ export function CandidatesTab({ data, canEdit, reload }: TabProps) {
       )}
       {dialog === "add" && <AddDialog cycleId={data.cycle.id} onDone={() => setDialog(null)} run={run} />}
       {dialog === "import" && <ImportListDialog cycleId={data.cycle.id} onDone={() => setDialog(null)} run={run} />}
-      {dialog === "students" && <FromStudentsDialog cycleId={data.cycle.id} onDone={() => setDialog(null)} run={run} />}
       {dialog === "assign" && (
         <AssignDialog
           data={data}
@@ -1003,46 +976,6 @@ function ImportListDialog({ cycleId, onDone, run }: { cycleId: string; onDone: (
             }}
           >
             Import {rows?.length ?? ""}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-function FromStudentsDialog({ cycleId, onDone, run }: { cycleId: string; onDone: () => void; run: Run }) {
-  const [students, setStudents] = useState<CycleStudent[] | null>(null);
-  const [start, setStart] = useState("");
-  const [digits, setDigits] = useState("4");
-  useEffect(() => {
-    listCycleStudents(cycleId).then(setStudents).catch(() => setStudents([]));
-  }, [cycleId]);
-  const todo = students?.filter((s) => !s.exam_number) ?? [];
-  return (
-    <Dialog open onOpenChange={(o) => !o && onDone()}>
-      <DialogContent className="sm:max-w-lg">
-        <DialogHeader>
-          <DialogTitle>Add candidates from students</DialogTitle>
-          <DialogDescription>
-            Gives every student of this cycle who isn&apos;t an exam candidate yet a new exam number, and links them, so their results
-            update the student record later.
-          </DialogDescription>
-        </DialogHeader>
-        <p className="text-sm">
-          {students === null ? "Counting students…" : `${todo.length} of ${students.length} students don't have an exam number yet.`}
-        </p>
-        {todo.length > 0 && <NumberingFields start={start} setStart={setStart} digits={digits} setDigits={setDigits} />}
-        <DialogFooter>
-          <Button variant="outline" onClick={onDone}>
-            Cancel
-          </Button>
-          <Button
-            disabled={!todo.length}
-            onClick={async () => {
-              if (await run(() => addCandidatesFromStudents(cycleId, numbering(start, digits)), `${todo.length} candidates added from students`)) onDone();
-            }}
-          >
-            Add {todo.length || ""}
           </Button>
         </DialogFooter>
       </DialogContent>

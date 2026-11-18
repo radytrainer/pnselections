@@ -918,7 +918,10 @@ writtenExamsRouter.post("/written-exams/apply-to-students", async (req, res) => 
   res.json(result);
 });
 
-/** Creates student records (status exam_completed) for candidates that aren't linked to one yet. */
+/**
+ * Creates student records (status exam_completed) for candidates that aren't
+ * linked to one yet — or links them to an existing student with the same name.
+ */
 writtenExamsRouter.post("/written-exams/create-students", async (req, res) => {
   const input = z.object({ cycleId: uuid, candidateIds: z.array(uuid).min(1).max(2000) }).parse(req.body);
   const result = await asUser(req, async (db) => {
@@ -941,10 +944,37 @@ writtenExamsRouter.post("/written-exams/create-students", async (req, res) => {
       "select id, full_name, gender, first_name, last_name, dob::text from exam_candidates where cycle_id = $1 and id = any($2::uuid[]) and student_id is null",
       [input.cycleId, input.candidateIds],
     );
+    // A passer who already has a student record (entered on the Students page) is
+    // linked to it instead of getting a duplicate: same name, either order, and
+    // only when exactly one unlinked student of the cycle matches.
+    const existing = await db.rows<{ id: string; first_name: string; last_name: string; status: string }>(
+      `select s.id, s.first_name, s.last_name, s.status from students s
+       where s.cycle_id = $1 and s.deleted_at is null and not exists (select 1 from exam_candidates c where c.student_id = s.id)`,
+      [input.cycleId],
+    );
+    const byName = new Map<string, string[]>();
+    for (const s of existing) {
+      for (const key of new Set([normName(s.first_name + s.last_name), normName(s.last_name + s.first_name)])) {
+        byName.set(key, [...(byName.get(key) ?? []), s.id]);
+      }
+    }
+    const statusById = new Map(existing.map((s) => [s.id, s.status]));
+    const used = new Set<string>();
     let created = 0;
+    let linked = 0;
     const skipped: string[] = [];
     for (const c of candidates) {
       const name = (c.full_name ?? "").trim().replace(/\s+/g, " ");
+      const matches = [...new Set(byName.get(normName(c.first_name?.trim() ? `${c.first_name}${c.last_name ?? ""}` : name)) ?? [])];
+      if (matches.length === 1 && !used.has(matches[0])) {
+        const sid = matches[0];
+        used.add(sid);
+        await updateRows(db, "exam_candidates", { student_id: sid }, { id: c.id });
+        // Passed the exam → waiting for the interview (students further along are left alone).
+        if (statusById.get(sid) === "registered") await updateRows(db, "students", { status: "exam_completed" }, { id: sid });
+        linked++;
+        continue;
+      }
       if (!name || !c.gender) {
         skipped.push(c.id);
         continue;
@@ -969,7 +999,7 @@ writtenExamsRouter.post("/written-exams/create-students", async (req, res) => {
       await updateRows(db, "exam_candidates", { student_id: student?.id }, { id: c.id });
       created++;
     }
-    return { created, skipped: skipped.length };
+    return { created, linked, skipped: skipped.length };
   });
   res.json(result);
 });

@@ -33,6 +33,7 @@ const REASONS: Record<string, string> = {
   name_required: "Please enter your first and last name. · សូមបញ្ចូលនាមខ្លួន និងនាមត្រកូល។",
   gender_required: "Please choose your gender. · សូមជ្រើសរើសភេទ។",
   bad_dob: "Please check your date of birth. · សូមពិនិត្យថ្ងៃខែឆ្នាំកំណើត។",
+  dob_required: "Please enter your date of birth. · សូមបញ្ចូលថ្ងៃខែឆ្នាំកំណើត។",
   center_required: "Please choose your exam center. · សូមជ្រើសរើសមណ្ឌលប្រឡង។",
   bad_choice: "Please choose again from the list. · សូមជ្រើសរើសម្តងទៀត។",
   too_many: "Too many registrations from this device. Please wait a few minutes. · សូមរង់ចាំបន្តិច។",
@@ -83,7 +84,7 @@ export default function RegisterPage() {
   const [values, setValues] = useState<PublicRegistration>(EMPTY);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [done, setDone] = useState<{ name: string } | null>(null);
+  const [done, setDone] = useState<{ name: string; already: boolean } | null>(null);
 
   useEffect(() => {
     getPublicForm(token)
@@ -101,12 +102,13 @@ export default function RegisterPage() {
     setError(null);
     if (!values.firstName.trim() || !values.lastName.trim()) return setError(REASONS.name_required);
     if (!values.gender) return setError(REASONS.gender_required);
+    if (!values.dob) return setError(REASONS.dob_required);
     if (form?.status === "open" && form.centers.length > 0 && !values.examCenterId) return setError(REASONS.center_required);
     setSending(true);
     try {
       const r = await submitPublicRegistration(token, values);
       if (r.ok) {
-        setDone({ name: `${values.firstName.trim()} ${values.lastName.trim()}` });
+        setDone({ name: `${values.firstName.trim()} ${values.lastName.trim()}`, already: !!r.duplicate });
         window.scrollTo({ top: 0 });
       } else if (r.reason === "closed" || r.reason === "expired" || r.reason === "not_found") {
         const name = form?.status === "open" ? form.session.name : "";
@@ -142,11 +144,23 @@ export default function RegisterPage() {
           <div className="mx-auto mb-3 flex size-12 items-center justify-center rounded-full bg-emerald-100 dark:bg-emerald-500/15">
             <CheckCircle2 className="size-7 text-emerald-600 dark:text-emerald-400" />
           </div>
-          <h1 className="text-lg font-semibold">Thank you, {done.name}!</h1>
-          <p className="mt-1 text-sm text-muted-foreground" style={{ fontFamily: "var(--font-battambang)" }}>
-            អរគុណ! ការចុះឈ្មោះរបស់អ្នកបានជោគជ័យ។
-          </p>
-          <p className="mt-2 text-sm text-muted-foreground">You are registered for {s.name}. We will contact you about the exam.</p>
+          {done.already ? (
+            <>
+              <h1 className="text-lg font-semibold">{done.name}, you are already registered</h1>
+              <p className="mt-1 text-sm text-muted-foreground" style={{ fontFamily: "var(--font-battambang)" }}>
+                អ្នកបានចុះឈ្មោះរួចហើយ។ មិនចាំបាច់ចុះឈ្មោះម្តងទៀតទេ។
+              </p>
+              <p className="mt-2 text-sm text-muted-foreground">There is no need to register again. We will contact you about the exam.</p>
+            </>
+          ) : (
+            <>
+              <h1 className="text-lg font-semibold">Thank you, {done.name}!</h1>
+              <p className="mt-1 text-sm text-muted-foreground" style={{ fontFamily: "var(--font-battambang)" }}>
+                អរគុណ! ការចុះឈ្មោះរបស់អ្នកបានជោគជ័យ។
+              </p>
+              <p className="mt-2 text-sm text-muted-foreground">You are registered for {s.name}. We will contact you about the exam.</p>
+            </>
+          )}
           <Button
             className="mt-5 h-auto min-h-9 max-w-full py-2 whitespace-normal"
             variant="outline"
@@ -225,7 +239,7 @@ export default function RegisterPage() {
           </fieldset>
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-1.5">
-              <Label htmlFor="r-dob" km="ថ្ងៃខែឆ្នាំកំណើត" en="Date of birth" />
+              <Label htmlFor="r-dob" km="ថ្ងៃខែឆ្នាំកំណើត" en="Date of birth" required />
               <Input id="r-dob" type="date" value={values.dob} onChange={set("dob")} max={new Date().toISOString().slice(0, 10)} className="h-10" />
             </div>
             <div className="space-y-1.5">

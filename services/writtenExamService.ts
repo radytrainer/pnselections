@@ -159,7 +159,7 @@ export function applyToStudents(cycleId: string, passed: string[], failed: { can
 }
 
 export function createStudentsFromCandidates(cycleId: string, candidateIds: string[]) {
-  return api.post<{ created: number; skipped: number }>("/api/v1/written-exams/create-students", { cycleId, candidateIds });
+  return api.post<{ created: number; linked: number; skipped: number }>("/api/v1/written-exams/create-students", { cycleId, candidateIds });
 }
 
 export function getStudentExam(studentId: string) {

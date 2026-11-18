@@ -50,6 +50,8 @@ export function RegistrationsTable({
   const selectedIds = filtered.filter((r) => selected[r.id]).map((r) => r.id);
   const notAdded = rows.filter((r) => !r.candidate_id);
   const allChecked = filtered.length > 0 && filtered.every((r) => selected[r.id]);
+  /** Repeat registrations of someone who already registered (safe to remove). */
+  const repeats = rows.filter((r) => r.duplicate_of_registration && !r.candidate_id);
 
   async function run(key: string, fn: () => Promise<string>) {
     setBusy(key);
@@ -102,6 +104,11 @@ export function RegistrationsTable({
           <Button variant="outline" disabled={rows.length === 0} onClick={exportXlsx}>
             <Download /> Excel
           </Button>
+          {repeats.length > 0 && (
+            <Button variant="outline" className="border-amber-300 text-amber-800 hover:bg-amber-50 dark:border-amber-500/40 dark:text-amber-300 dark:hover:bg-amber-500/10" onClick={() => setSelected(Object.fromEntries(repeats.map((r) => [r.id, true])))}>
+              Select {repeats.length} repeat{repeats.length === 1 ? "" : "s"}
+            </Button>
+          )}
           {selectedIds.length > 0 && (
             <Button variant="ghost" className="text-rose-700 hover:bg-rose-50 hover:text-rose-800 dark:text-rose-400 dark:hover:bg-rose-500/10" onClick={() => setConfirm({ kind: "remove", ids: selectedIds })}>
               <Trash2 /> Remove {selectedIds.length}
@@ -191,6 +198,22 @@ export function RegistrationsTable({
                       <Badge variant="outline" className="border-emerald-300 bg-emerald-50 text-emerald-800 dark:border-emerald-500/40 dark:bg-emerald-500/10 dark:text-emerald-300">
                         Candidate {r.exam_number}
                       </Badge>
+                    ) : r.duplicate_of_registration ? (
+                      <Badge
+                        variant="outline"
+                        className="border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-300"
+                        title={`Same person registered earlier (${new Date(r.duplicate_of_registration).toLocaleString()}) — same name and birth date or phone`}
+                      >
+                        Repeat
+                      </Badge>
+                    ) : r.duplicate_candidate ? (
+                      <Badge
+                        variant="outline"
+                        className="border-sky-300 bg-sky-50 text-sky-800 dark:border-sky-500/40 dark:bg-sky-500/10 dark:text-sky-300"
+                        title="Already in the exam candidates with the same name and birth date — adding links to that candidate instead of creating a new one"
+                      >
+                        Already candidate {r.duplicate_candidate}
+                      </Badge>
                     ) : (
                       <Badge variant="outline">New</Badge>
                     )}
@@ -209,8 +232,9 @@ export function RegistrationsTable({
               <DialogHeader>
                 <DialogTitle>Add {confirm.ids.length} to exam candidates?</DialogTitle>
                 <DialogDescription>
-                  Each gets the next free exam number, with their name, gender, date of birth, high school, province and chosen exam center. They then appear on Written
-                  Exams → Candidates (attendance lists, ZipGrade CSV).
+                  Each gets the next free exam number, with their name, gender, date of birth, high school, province and chosen exam center. Anyone already in the
+                  candidates (same name and birth date) is linked to that candidate instead of being added twice. They then appear on Written Exams → Candidates
+                  (attendance lists, ZipGrade CSV).
                   {rows.filter((r) => confirm.ids.includes(r.id) && !r.exam_center_id).length > 0 &&
                     ` ${rows.filter((r) => confirm.ids.includes(r.id) && !r.exam_center_id).length} have no exam center yet — you can assign one later on the Candidates tab.`}
                 </DialogDescription>
@@ -224,7 +248,11 @@ export function RegistrationsTable({
                   onClick={() =>
                     run("add", async () => {
                       const r = await addRegistrationsToCandidates(confirm.ids);
-                      return r.added ? `${r.added} added to exam candidates (${r.first === r.last ? r.first : `${r.first}–${r.last}`})` : "Nothing new to add";
+                      const parts = [
+                        r.added ? `${r.added} added to exam candidates (${r.first === r.last ? r.first : `${r.first}–${r.last}`})` : "",
+                        r.matched ? `${r.matched} matched to existing candidate${r.matched === 1 ? "" : "s"}` : "",
+                      ].filter(Boolean);
+                      return parts.length ? parts.join(" · ") : "Nothing new to add";
                     })
                   }
                 >

@@ -66,7 +66,12 @@ export function NextSteps({ data, results, reload }: { data: ExamData; results: 
 
   async function movePassers() {
     let created = 0;
-    if (toCreate.length) created = (await createStudentsFromCandidates(data.cycle.id, toCreate.map((r) => r.candidate.id))).created;
+    let linked = 0;
+    if (toCreate.length) {
+      const r = await createStudentsFromCandidates(data.cycle.id, toCreate.map((x) => x.candidate.id));
+      created = r.created;
+      linked = r.linked ?? 0;
+    }
     let advanced = 0;
     let eliminated = 0;
     if (toAdvance.length || toEliminate.length) {
@@ -79,8 +84,9 @@ export function NextSteps({ data, results, reload }: { data: ExamData; results: 
       eliminated = r.eliminated;
     }
     return [
-      `${created + advanced} passer${created + advanced === 1 ? "" : "s"} moved to Motivation Interview`,
+      `${created + linked + advanced} passer${created + linked + advanced === 1 ? "" : "s"} moved to Motivation Interview`,
       created ? `${created} new student record${created === 1 ? "" : "s"}` : "",
+      linked ? `${linked} matched to existing student${linked === 1 ? "" : "s"}` : "",
       eliminated ? `${eliminated} marked eliminated` : "",
     ]
       .filter(Boolean)
@@ -184,7 +190,7 @@ export function NextSteps({ data, results, reload }: { data: ExamData; results: 
             </p>
           )}
           <p className="text-xs text-muted-foreground">
-            If some passers already exist as students, link them on the Candidates tab first (“Link by name” or edit) so no duplicate is created.
+            Passers who already exist on the Students page (same name) are linked to that record instead of getting a duplicate.
           </p>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDialog(null)}>

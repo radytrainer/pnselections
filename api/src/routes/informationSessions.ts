@@ -134,7 +134,21 @@ informationSessionsRouter.get("/information-sessions/:id/registrations", async (
         `select r.*,
            (select p.name_en from provinces p where p.id = r.province_id) as province_name,
            (select ec.name from exam_centers ec where ec.id = r.exam_center_id) as exam_center_name,
-           (select c.exam_number from exam_candidates c where c.id = r.candidate_id) as exam_number
+           (select c.exam_number from exam_candidates c where c.id = r.candidate_id) as exam_number,
+           -- Possible duplicates (migration 0063 rules): an existing exam candidate with the
+           -- same name + birth date, or an earlier registration in the cycle (same name and
+           -- same birth date or phone).
+           case when r.candidate_id is null then (
+             select c.exam_number from exam_candidates c
+              where c.cycle_id = r.cycle_id and c.dob = r.dob
+                and (same_person_name(c.first_name, c.last_name, r.first_name, r.last_name)
+                     or person_name_key(c.full_name) in (person_name_key(r.first_name) || person_name_key(r.last_name), person_name_key(r.last_name) || person_name_key(r.first_name)))
+              limit 1) end as duplicate_candidate,
+           (select o.created_at from is_registrations o
+             where o.cycle_id = r.cycle_id and o.id <> r.id and o.created_at < r.created_at
+               and same_person_name(o.first_name, o.last_name, r.first_name, r.last_name)
+               and (o.dob = r.dob or (length(phone_key(r.phone)) >= 8 and phone_key(o.phone) = phone_key(r.phone)))
+             order by o.created_at limit 1) as duplicate_of_registration
          from is_registrations r where r.session_id = $1 order by r.created_at desc`,
         [id],
       ),
@@ -263,8 +277,33 @@ informationSessionsRouter.post("/is-registrations/to-candidates", async (req, re
     if (cycles.size > 1) throw badRequest("Registrations from different cycles can't be added together");
     const cycleId = regs[0].cycle_id;
     await assertUnlocked(db, cycleId);
-    const numbers = await nextNumbers(db, cycleId, regs.length, input.startNumber, input.digits);
-    for (const [i, r] of regs.entries()) {
+    // Already an exam candidate (same name + birth date, e.g. from an imported list)?
+    // Link to that candidate instead of creating a second one.
+    const toCreate: typeof regs = [];
+    let matched = 0;
+    const taken = new Set<string>();
+    for (const r of regs) {
+      const existing = r.dob
+        ? await db.value<string>(
+            `select c.id from exam_candidates c
+              where c.cycle_id = $1 and c.dob = $2::date
+                and (same_person_name(c.first_name, c.last_name, $3, $4)
+                     or person_name_key(c.full_name) in (person_name_key($3) || person_name_key($4), person_name_key($4) || person_name_key($3)))
+              order by c.exam_number limit 1`,
+            [cycleId, r.dob, r.first_name, r.last_name],
+          )
+        : null;
+      if (existing && !taken.has(existing)) {
+        taken.add(existing);
+        await updateRows(db, "is_registrations", { candidate_id: existing }, { id: r.id });
+        // Give the candidate the chosen exam center if it has none yet.
+        if (r.exam_center_id) await db.exec("update exam_candidates set center_id = $1 where id = $2 and center_id is null", [r.exam_center_id, existing]);
+        matched++;
+      } else toCreate.push(r);
+    }
+    if (toCreate.length === 0) return { added: 0, matched, skipped: input.ids.length - regs.length };
+    const numbers = await nextNumbers(db, cycleId, toCreate.length, input.startNumber, input.digits);
+    for (const [i, r] of toCreate.entries()) {
       const cand = await insertRow(
         db,
         "exam_candidates",
@@ -284,7 +323,7 @@ informationSessionsRouter.post("/is-registrations/to-candidates", async (req, re
       );
       await updateRows(db, "is_registrations", { candidate_id: cand!.id }, { id: r.id });
     }
-    return { added: regs.length, skipped: input.ids.length - regs.length, first: numbers[0], last: numbers[numbers.length - 1] };
+    return { added: toCreate.length, matched, skipped: input.ids.length - regs.length, first: numbers[0], last: numbers[numbers.length - 1] };
   });
   res.json(result);
 });
