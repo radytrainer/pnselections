@@ -18,6 +18,7 @@ import { getMyProfile } from "@/services/userService";
 import { getSignedStudentDocumentUrls, pickLatestPhotoPath } from "@/lib/storage";
 import { StudentsTable } from "@/components/tables/StudentsTable";
 import { StudentImportDialog } from "@/components/forms/StudentImportDialog";
+import { StudentExportDialog } from "@/components/students/StudentExportDialog";
 import { CycleSelect } from "@/components/forms/CycleSelect";
 import { Mic, Plus, Search, SlidersHorizontal, Trash2, X } from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -344,6 +345,35 @@ export default function StudentsPage() {
               }}
             />
             </div>
+            <StudentExportDialog
+              filters={{
+                search: search || undefined,
+                status: status || undefined,
+                homeVisitor: homeVisitor || undefined,
+                provinceId: provinceId || undefined,
+                ngoIds,
+                cycleId: cycleId || undefined,
+                interviewCenterId: interviewCenterId || undefined,
+                examCenterId: examCenterId || undefined,
+                hideOut: !showOut,
+              }}
+              filtersText={[
+                search && `Search “${search}”`,
+                status && `Status: ${studentStatusLabel(status)}`,
+                provinceId && `Province: ${provinces.find((p) => p.id === provinceId)?.name_en ?? ""}`,
+                homeVisitor && `Home visitor: ${homeVisitor}`,
+                ngoName && `NGO: ${ngoName}`,
+                examCenterId && `Exam center: ${examCenterId === "__none__" ? "none" : (examCenters.find((c) => c.id === examCenterId)?.name ?? "")}`,
+                interviewCenterId && `Interview center: ${interviewCenterId === "__none__" ? "none" : (interviewCenters.find((c) => c.id === interviewCenterId)?.name ?? "")}`,
+                !showOut && hiddenOut > 0 && "Students who failed the exam or interview left out",
+              ]
+                .filter(Boolean)
+                .join(" · ")}
+              cycleName={cycles.find((c) => c.id === cycleId)?.name ?? ""}
+              count={genderCounts?.total ?? null}
+              hasExamCenters={!!cycleId && examCenters.length > 0}
+              hasInterviewCenters={!!cycleId && interviewCenters.length > 0}
+            />
             <StudentImportDialog onImported={fetchStudents} />
             <RoleGate capability="viewTrash">
               <Tooltip>

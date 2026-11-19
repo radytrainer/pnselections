@@ -11,6 +11,8 @@ export const CAPABILITIES = {
   viewAuditLogs: ["super_admin", "program_manager"],
   manageInterviewQuestions: ["super_admin"],
   manageCycles: ["super_admin", "program_manager"],
+  // Configuration → Annual Report (migration 0070 — same roles as its RLS policies).
+  manageAnnualReport: ["super_admin", "program_manager", "selection_team"],
   managePartners: ["super_admin", "program_manager"],
   createEditStudents: ["super_admin", "program_manager", "selection_team"],
   // Viewing Trash and restoring a soft-deleted student — same roles as

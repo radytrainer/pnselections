@@ -8,6 +8,7 @@ import { errorHandler } from "./errors";
 import { rateLimitHit, redis } from "./redis";
 import { adminRouter, sessionRouter } from "./routes/admin";
 import { applicationsRouter, publicApplicationRouter } from "./routes/applications";
+import { annualReportRouter } from "./routes/annualReport";
 import { assessmentsRouter } from "./routes/assessments";
 import { writtenExamsRouter } from "./routes/writtenExams";
 import { interviewCentersRouter } from "./routes/interviewCenters";
@@ -100,6 +101,7 @@ export function createApp() {
   v1.use(applicationsRouter);
   v1.use(partnersRouter);
   v1.use(reportsRouter);
+  v1.use(annualReportRouter);
   v1.use(miscRouter);
   v1.use(adminToolsRouter);
   app.use("/api/v1", v1);

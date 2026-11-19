@@ -85,6 +85,16 @@ uploadsRouter.post("/avatar", imageUpload(MAX_IMAGE_BYTES), async (req, res) => 
   res.status(201).json({ url: publicUrl(key) });
 });
 
+/** Photos placed in the Annual Report (Configuration → Annual Report). Private, staff only. */
+const REPORT_ROLES = ["super_admin", "program_manager", "selection_team"];
+uploadsRouter.post("/report-photo", imageUpload(MAX_DOCUMENT_BYTES), async (req, res) => {
+  if (!REPORT_ROLES.includes(req.user?.role ?? "")) throw forbidden();
+  const image = readImage(req, ["image/png", "image/jpeg", "image/webp"], "Photo");
+  const key = `report-photos/${randomUUID()}.${image.ext}`;
+  await storage.put(key, image.data, image.mime);
+  res.status(201).json({ url: publicUrl(key) });
+});
+
 /**
  * Records a `doc_type='photo'` student_documents row (RLS-checked) and
  * stores the file in the same transaction — if either fails, neither sticks.
@@ -211,6 +221,11 @@ filesRouter.get("/partner-logos/*path", async (req, res) => {
 
 filesRouter.get("/avatars/*path", async (req, res) => {
   await sendFile(req, res, `avatars/${keyFromParams(req)}`, "public, max-age=31536000, immutable");
+});
+
+filesRouter.get("/report-photos/*path", requireAuth, async (req, res) => {
+  if (!REPORT_ROLES.includes(req.user?.role ?? "")) throw forbidden();
+  await sendFile(req, res, `report-photos/${keyFromParams(req)}`, "private, max-age=31536000, immutable");
 });
 
 /** Private: only callers who can see the matching student_documents row (RLS) get the file. */

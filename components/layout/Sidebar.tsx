@@ -7,6 +7,7 @@ import {
   Award,
   Building2,
   DatabaseBackup,
+  BookOpenText,
   CalendarRange,
   ChevronDown,
   ChevronLeft,
@@ -146,6 +147,12 @@ export const CONFIG_ITEMS: NavItem[] = [
     label: "Selection Cycles",
     icon: CalendarRange,
     roles: ["super_admin", "program_manager"],
+  },
+  {
+    href: "/admin/annual-report",
+    label: "Annual Report",
+    icon: BookOpenText,
+    roles: ["super_admin", "program_manager", "selection_team"],
   },
   {
     href: "/admin/interview-questions",
