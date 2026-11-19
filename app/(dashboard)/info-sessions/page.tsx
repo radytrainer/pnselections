@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import { ArrowLeft, CalendarDays, Link2, Loader2, MapPin, Megaphone, MonitorPlay, Pencil, Plus, Search, Send, Trash2, Users } from "lucide-react";
+import { ArrowLeft, CalendarDays, Link2, Loader2, MapPin, Megaphone, Mic, MonitorPlay, Pencil, Plus, Search, Send, Trash2, Users } from "lucide-react";
 import { useRole } from "@/hooks/useRole";
 import { can } from "@/lib/rbac";
 import { useCycleFilter } from "@/hooks/useCycleFilter";
@@ -20,6 +20,7 @@ import {
   linkState,
   listInformationSessions,
   listRegistrations,
+  presenterLabel,
   subscribeToRegistrations,
   updateInformationSession,
   type InformationSession,
@@ -139,7 +140,7 @@ export default function InformationSessionsPage() {
   const selected = sessions?.find((s) => s.id === selectedId) ?? null;
   const filtered = useMemo(() => {
     const s = q.trim().toLowerCase();
-    return (sessions ?? []).filter((x) => !s || [x.name, x.venue, x.province_name].some((v) => (v ?? "").toLowerCase().includes(s)));
+    return (sessions ?? []).filter((x) => !s || [x.name, x.venue, x.province_name, x.presenter_name, presenterLabel(x.presenter_type)].some((v) => (v ?? "").toLowerCase().includes(s)));
   }, [sessions, q]);
 
   const totals = useMemo(() => {
@@ -259,6 +260,12 @@ export default function InformationSessionsPage() {
                     {(selected.venue || selected.province_name) && (
                       <span className="flex items-center gap-1.5">
                         <MapPin className="size-4" /> {[selected.venue, selected.province_name].filter(Boolean).join(", ")}
+                      </span>
+                    )}
+                    {selected.presenter_type && (
+                      <span className="flex items-center gap-1.5">
+                        <Mic className="size-4" /> {presenterLabel(selected.presenter_type)}
+                        {selected.presenter_name ? ` · ${selected.presenter_name}` : ""}
                       </span>
                     )}
                     {selected.default_exam_center_name && <Badge variant="outline">Exam center: {selected.default_exam_center_name}</Badge>}

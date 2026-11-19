@@ -8,14 +8,16 @@
 
 export type Option = { value: string; km: string; en: string };
 
-export type FieldType = "text" | "textarea" | "date" | "tel" | "number" | "radio" | "checks";
+export type FieldType = "text" | "textarea" | "date" | "tel" | "number" | "url" | "radio" | "checks";
 
 export type Field = {
   key: string;
   type: FieldType;
   km: string;
   en: string;
+  /** Every question is required unless marked optional (set from this in SECTIONS). */
   required?: boolean;
+  optional?: boolean;
   options?: Option[];
   /** Only shown (and kept) when another answer matches. */
   showIf?: { key: string; equals?: string; includesOtherThan?: string; includes?: string };
@@ -34,7 +36,7 @@ const yesNo: Option[] = [
   { value: "no", km: "ទេ", en: "No" },
 ];
 
-export const SECTIONS: Section[] = [
+const RAW_SECTIONS: Section[] = [
   {
     id: "personal",
     km: "ផ្នែក ១៖ ព័ត៌មានផ្ទាល់ខ្លួន",
@@ -62,7 +64,16 @@ export const SECTIONS: Section[] = [
       { key: "address_commune", type: "text", km: "ឃុំ/សង្កាត់", en: "Commune", half: true, max: 100 },
       { key: "address_district", type: "text", km: "ស្រុក/ខណ្ឌ", en: "District", half: true, max: 100 },
       { key: "address_province", type: "text", km: "ខេត្ត/រាជធានី", en: "Province", required: true, half: true, max: 100 },
-      { key: "sponsor_ngo", type: "text", km: "អង្គការដែលឧបត្ថម្ភ", en: "Sponsoring organization (NGO)", max: 200, placeholder: "Leave empty if none" },
+      {
+        key: "google_map_url",
+        type: "url",
+        km: "តំណ Google Map ទៅផ្ទះ",
+        en: "Google Maps link to your home",
+        optional: true,
+        max: 500,
+        placeholder: "https://maps.app.goo.gl/…",
+      },
+      { key: "sponsor_ngo", type: "text", km: "អង្គការដែលឧបត្ថម្ភ", en: "Sponsoring organization (NGO)", max: 200, placeholder: "សរសេរ “គ្មាន” / write “None” if none" },
     ],
   },
   {
@@ -296,6 +307,9 @@ export const SECTIONS: Section[] = [
   },
 ];
 
+/** All questions are required except those marked optional; follow-ups only when shown. */
+export const SECTIONS: Section[] = RAW_SECTIONS.map((s) => ({ ...s, fields: s.fields.map((f) => ({ ...f, required: !f.optional })) }));
+
 /** Part 6 — the documents the paper form asks to attach (uploaded as files). */
 export const DOCUMENTS_TO_ATTACH: Option[] = [
   { value: "home_map", km: "ផែនទីពីសាលាទៅផ្ទះគូរដោយដៃមួយសន្លឹក", en: "Hand-drawn map from school to your home" },
@@ -310,6 +324,8 @@ export const DECLARATION = {
 };
 
 export const MAX_ATTACHMENTS = 5;
+/** At least one document (map to home, family book…) must be attached. */
+export const MIN_ATTACHMENTS = 1;
 export const MAX_FILE_BYTES = 5 * 1024 * 1024;
 
 export const ALL_FIELDS: Field[] = SECTIONS.flatMap((s) => s.fields);
@@ -334,6 +350,27 @@ export function missingRequired(a: Answers): Field[] {
   return ALL_FIELDS.filter((f) => f.required && isShown(f, a) && isEmpty(typeof a[f.key] === "string" ? (a[f.key] as string).trim() : a[f.key]));
 }
 
+/** "maps.app.goo.gl/x" → "https://maps.app.goo.gl/x". */
+export function normalizeUrl(v: string): string {
+  const t = v.trim();
+  if (!t) return "";
+  return /^https?:\/\//i.test(t) ? t : `https://${t}`;
+}
+
+export function isValidUrl(v: string): boolean {
+  try {
+    const u = new URL(normalizeUrl(v));
+    return (u.protocol === "https:" || u.protocol === "http:") && u.hostname.includes(".");
+  } catch {
+    return false;
+  }
+}
+
+/** Filled-in link fields that aren't a web link. */
+export function invalidUrls(a: Answers): Field[] {
+  return ALL_FIELDS.filter((f) => f.type === "url" && isShown(f, a) && typeof a[f.key] === "string" && (a[f.key] as string).trim() !== "" && !isValidUrl(a[f.key] as string));
+}
+
 /** The answers to save: trimmed, hidden follow-ups dropped, only known keys. */
 export function cleanAnswers(a: Answers): Answers {
   const out: Answers = {};
@@ -341,7 +378,8 @@ export function cleanAnswers(a: Answers): Answers {
     if (!isShown(f, a)) continue;
     const v = a[f.key];
     if (isEmpty(v)) continue;
-    out[f.key] = typeof v === "string" ? v.trim().slice(0, f.max ?? 2000) : v;
+    const text = typeof v === "string" ? (f.type === "url" ? normalizeUrl(v) : v.trim()) : null;
+    out[f.key] = text !== null ? text.slice(0, f.max ?? 2000) : v;
   }
   if (a[DECLARATION.key] === true) out[DECLARATION.key] = true;
   return out;

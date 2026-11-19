@@ -42,6 +42,9 @@ const sessionFields = {
     .max(300)
     .regex(/^(https:\/\/(t\.me|telegram\.me)\/[A-Za-z0-9_+/-]+)?$/, "Use a Telegram link like https://t.me/+AbCdEf or https://t.me/groupname")
     .nullish(),
+  /** Who gave the session (migration 0069). */
+  presenterType: z.enum(["pnc_staff", "partners", "alumni"]).nullish(),
+  presenterName: z.string().trim().max(200).nullish(),
 };
 
 function sessionColumns(input: Partial<Record<keyof typeof sessionFields, unknown>>) {
@@ -55,6 +58,8 @@ function sessionColumns(input: Partial<Record<keyof typeof sessionFields, unknow
     regOpen: "reg_open",
     regExpiresAt: "reg_expires_at",
     telegramUrl: "telegram_url",
+    presenterType: "presenter_type",
+    presenterName: "presenter_name",
   };
   const out: Record<string, unknown> = {};
   for (const [k, col] of Object.entries(map)) {

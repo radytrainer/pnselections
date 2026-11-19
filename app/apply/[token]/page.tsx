@@ -13,9 +13,11 @@ import {
   cleanAnswers,
   DECLARATION,
   DOCUMENTS_TO_ATTACH,
+  invalidUrls,
   isShown,
   MAX_ATTACHMENTS,
   MAX_FILE_BYTES,
+  MIN_ATTACHMENTS,
   missingRequired,
   SECTIONS,
   type Answers,
@@ -50,6 +52,8 @@ const REASONS: Record<string, string> = {
   too_many: "Too many tries from this device. Please wait a few minutes. · សូមរង់ចាំបន្តិច។",
   photo_required: "Please upload your photo (4×6). · សូមបញ្ចូលរូបថត ៤×៦។",
   declaration: "Please tick the declaration at the end of the form. · សូមធីកការធានានៅខាងចុង។",
+  attachment_required: "Please attach at least one document (map to your home, family book…). · សូមភ្ជាប់ឯកសារយ៉ាងហោចណាស់មួយ។",
+  bad_url: "The Google Maps link doesn't look right. Copy it from Google Maps → Share → Copy link. · តំណ Google Map មិនត្រឹមត្រូវ។",
 };
 
 function Shell({ children }: { children: ReactNode }) {
@@ -111,7 +115,15 @@ function Choice({ type, name, checked, onChange, km, en }: { type: "radio" | "ch
   );
 }
 
-function FieldInput({ f, value, set }: { f: Field; value: Answers[string] | undefined; set: (v: Answers[string]) => void }) {
+function RequiredHint({ show, text = "Required · សូមបំពេញ" }: { show: boolean; text?: string }) {
+  return show ? (
+    <p className="text-xs text-rose-600" style={KM}>
+      {text}
+    </p>
+  ) : null;
+}
+
+function FieldInput({ f, value, set, invalid, invalidText }: { f: Field; value: Answers[string] | undefined; set: (v: Answers[string]) => void; invalid?: boolean; invalidText?: string }) {
   const id = `f-${f.key}`;
   if (f.type === "radio" || f.type === "checks") {
     const list = Array.isArray(value) ? value : [];
@@ -123,7 +135,7 @@ function FieldInput({ f, value, set }: { f: Field; value: Answers[string] | unde
       set(next);
     };
     return (
-      <fieldset className="space-y-1.5">
+      <fieldset className="space-y-1.5" id={id} tabIndex={-1} aria-invalid={invalid || undefined}>
         <FieldLabel f={f} as="legend" />
         <div className={cn("grid gap-2", (f.options?.length ?? 0) > 3 ? "sm:grid-cols-2" : "sm:grid-cols-3")}>
           {f.options!.map((o) => (
@@ -138,6 +150,7 @@ function FieldInput({ f, value, set }: { f: Field; value: Answers[string] | unde
             />
           ))}
         </div>
+        <RequiredHint show={!!invalid} text={invalidText} />
       </fieldset>
     );
   }
@@ -146,12 +159,13 @@ function FieldInput({ f, value, set }: { f: Field; value: Answers[string] | unde
     <div className="space-y-1.5">
       <FieldLabel f={f} htmlFor={id} />
       {f.type === "textarea" ? (
-        <Textarea id={id} value={str} onChange={(e) => set(e.target.value)} maxLength={f.max} rows={3} placeholder={f.placeholder} />
+        <Textarea id={id} value={str} onChange={(e) => set(e.target.value)} maxLength={f.max} rows={3} placeholder={f.placeholder} aria-invalid={invalid || undefined} />
       ) : (
         <Input
           id={id}
-          type={f.type === "tel" ? "tel" : f.type === "date" ? "date" : "text"}
-          inputMode={f.type === "number" ? "numeric" : f.type === "tel" ? "tel" : undefined}
+          type={f.type === "tel" ? "tel" : f.type === "date" ? "date" : f.type === "url" ? "url" : "text"}
+          inputMode={f.type === "number" ? "numeric" : f.type === "tel" ? "tel" : f.type === "url" ? "url" : undefined}
+          aria-invalid={invalid || undefined}
           value={str}
           onChange={(e) => set(f.type === "number" ? e.target.value.replace(/[^\d]/g, "") : e.target.value)}
           maxLength={f.type === "date" ? undefined : f.max}
@@ -159,6 +173,7 @@ function FieldInput({ f, value, set }: { f: Field; value: Answers[string] | unde
           className="h-10"
         />
       )}
+      <RequiredHint show={!!invalid} text={invalidText} />
     </div>
   );
 }
@@ -196,6 +211,8 @@ export default function ApplyPage() {
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
+  /** After a Submit attempt, empty required fields are marked. */
+  const [tried, setTried] = useState(false);
   const [photoVersion, setPhotoVersion] = useState(0);
   const photoInput = useRef<HTMLInputElement>(null);
   const fileInput = useRef<HTMLInputElement>(null);
@@ -232,6 +249,8 @@ export default function ApplyPage() {
   const attachments = files.filter((f) => f.kind === "file");
   const age = typeof answers.dob === "string" && answers.dob ? ageFrom(answers.dob) : null;
   const missing = useMemo(() => missingRequired(answers), [answers]);
+  const badUrls = useMemo(() => invalidUrls(answers), [answers]);
+  const missingKeys = useMemo(() => new Set(missing.map((f) => f.key)), [missing]);
 
   async function upload(kind: "photo" | "file", picked: FileList | null) {
     if (!picked || picked.length === 0) return;
@@ -278,12 +297,24 @@ export default function ApplyPage() {
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+    setTried(true);
+    const focus = (key: string) => {
+      const el = document.getElementById(`f-${key}`);
+      el?.scrollIntoView({ block: "center" });
+      el?.focus({ preventScroll: true });
+    };
     if (missing.length > 0) {
-      const first = missing[0];
-      document.getElementById(`f-${first.key}`)?.focus();
-      return setError(`Please fill in: ${missing.map((f) => f.en).join(", ")} · សូមបំពេញ៖ ${missing.map((f) => f.km).join(", ")}`);
+      focus(missing[0].key);
+      return setError(
+        `${missing.length} question${missing.length === 1 ? " is" : "s are"} not answered yet (marked in red), starting with “${missing[0].en}”. · មានសំណួរ ${missing.length} មិនទាន់បំពេញ។`,
+      );
+    }
+    if (badUrls.length > 0) {
+      focus(badUrls[0].key);
+      return setError(REASONS.bad_url);
     }
     if (!photo) return setError(REASONS.photo_required);
+    if (attachments.length < MIN_ATTACHMENTS) return setError(REASONS.attachment_required);
     if (answers[DECLARATION.key] !== true) return setError(REASONS.declaration);
     setSending(true);
     try {
@@ -415,7 +446,13 @@ export default function ApplyPage() {
                 .filter((f) => isShown(f, answers))
                 .map((f) => (
                   <div key={f.key} className={cn(!f.half && "sm:col-span-2")}>
-                    <FieldInput f={f} value={answers[f.key]} set={set(f.key)} />
+                    <FieldInput
+                      f={f}
+                      value={answers[f.key]}
+                      set={set(f.key)}
+                      invalid={tried && (missingKeys.has(f.key) || badUrls.some((b) => b.key === f.key))}
+                      invalidText={badUrls.some((b) => b.key === f.key) ? "Not a valid link · តំណមិនត្រឹមត្រូវ" : undefined}
+                    />
                     {f.key === "dob" && age !== null && (
                       <p className="mt-1 text-xs text-muted-foreground">
                         <span style={KM}>អាយុ</span> · Age {age}
@@ -431,9 +468,9 @@ export default function ApplyPage() {
         <section className="rounded-xl border bg-card shadow-sm">
           <div className="border-b px-5 py-3">
             <h2 className="font-semibold" style={KM}>
-              ផ្នែក ៦៖ ឯកសារត្រូវភ្ជាប់
+              ផ្នែក ៦៖ ឯកសារត្រូវភ្ជាប់ <span className="text-rose-600">*</span>
             </h2>
-            <p className="text-xs text-muted-foreground">Part 6: Documents to attach — photos or PDF, up to {MAX_ATTACHMENTS} files, 5 MB each</p>
+            <p className="text-xs text-muted-foreground">Part 6: Documents to attach — at least {MIN_ATTACHMENTS}, up to {MAX_ATTACHMENTS} files (photos or PDF, 5 MB each)</p>
           </div>
           <div className="space-y-3 p-5">
             <ul className="space-y-1 text-sm">
@@ -471,6 +508,7 @@ export default function ApplyPage() {
               {uploading === "file" ? <Loader2 className="animate-spin" /> : <Upload />}
               {attachments.length >= MAX_ATTACHMENTS ? `${MAX_ATTACHMENTS} files attached (maximum)` : `Attach files · ភ្ជាប់ឯកសារ (${attachments.length}/${MAX_ATTACHMENTS})`}
             </Button>
+            <RequiredHint show={tried && attachments.length < MIN_ATTACHMENTS} text="Attach at least one document · សូមភ្ជាប់ឯកសារយ៉ាងហោចណាស់មួយ" />
             <input ref={fileInput} type="file" multiple accept="image/jpeg,image/png,image/webp,application/pdf" className="hidden" onChange={(e) => upload("file", e.target.files)} />
           </div>
         </section>

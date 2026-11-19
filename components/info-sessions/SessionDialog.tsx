@@ -9,7 +9,8 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type { Province } from "@/services/lookupService";
 import type { StudentExamCenter } from "@/services/studentService";
-import type { InformationSession, SessionInput } from "@/services/informationSessionService";
+import { PRESENTER_TYPES, type InformationSession, type PresenterType, type SessionInput } from "@/services/informationSessionService";
+import { cn } from "@/lib/utils";
 
 const NONE = "__none__";
 
@@ -34,6 +35,8 @@ export function SessionDialog({
   const [centerId, setCenterId] = useState(session?.default_exam_center_id ?? "");
   const [notes, setNotes] = useState(session?.notes ?? "");
   const [telegram, setTelegram] = useState(session?.telegram_url ?? "");
+  const [presenterType, setPresenterType] = useState<PresenterType | "">(session?.presenter_type ?? "");
+  const [presenterName, setPresenterName] = useState(session?.presenter_name ?? "");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -50,6 +53,7 @@ export function SessionDialog({
 
   async function save() {
     if (!name.trim()) return setError("Give the session a name");
+    if (!presenterType) return setError("Choose who gave the session: PNC Staff, Partners or Alumni");
     if (!telegramOk) return setError("Use a Telegram link like https://t.me/+AbCdEf or https://t.me/groupname");
     setSaving(true);
     setError(null);
@@ -62,6 +66,8 @@ export function SessionDialog({
         defaultExamCenterId: centerId || null,
         notes: notes.trim() || null,
         telegramUrl: telegramUrl || null,
+        presenterType,
+        presenterName: presenterName.trim() || null,
       });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Couldn't save");
@@ -117,6 +123,45 @@ export function SessionDialog({
             </label>
             <Input id="is-venue" placeholder="Where the session takes place" value={venue} onChange={(e) => setVenue(e.target.value)} maxLength={200} />
           </div>
+          <fieldset className="space-y-1.5">
+            <legend className="mb-1.5 text-sm font-medium">
+              Presented by <span className="text-rose-600">*</span>
+            </legend>
+            <div className="grid grid-cols-3 gap-2" role="radiogroup">
+              {PRESENTER_TYPES.map((p) => (
+                <label
+                  key={p.value}
+                  className={cn(
+                    "flex cursor-pointer items-center justify-center rounded-md border px-2 py-2 text-sm transition-colors has-focus-visible:ring-3 has-focus-visible:ring-ring/50",
+                    presenterType === p.value ? "border-primary bg-primary/5 font-medium" : "hover:bg-muted",
+                  )}
+                >
+                  <input
+                    type="radio"
+                    name="presenter-type"
+                    value={p.value}
+                    checked={presenterType === p.value}
+                    onChange={() => {
+                      setPresenterType(p.value);
+                      setError(null);
+                    }}
+                    className="sr-only"
+                  />
+                  {p.label}
+                </label>
+              ))}
+            </div>
+            <Input
+              id="is-presenter"
+              aria-label="Presenter name(s)"
+              placeholder={
+                presenterType === "partners" ? "Partner organization and presenter names" : presenterType === "alumni" ? "Alumni names" : "Presenter names, e.g. Sokha, Dara"
+              }
+              value={presenterName}
+              onChange={(e) => setPresenterName(e.target.value)}
+              maxLength={200}
+            />
+          </fieldset>
           <div className="space-y-1.5">
             <label className="text-sm font-medium" id="is-center-label">
               Suggested exam center

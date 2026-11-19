@@ -80,7 +80,13 @@ export function ApplicationAnswers({ application }: { application: StudentApplic
                     return (
                       <div key={f.key} className="grid gap-0.5 py-1.5 text-sm sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] sm:gap-3">
                         <span className="text-muted-foreground">{f.en}</span>
-                        <span className={cn("font-medium whitespace-pre-wrap break-words sm:text-right", text === "—" && "font-normal text-muted-foreground/70")}>{text}</span>
+                        {f.type === "url" && text !== "—" && /^https?:\/\//i.test(text) ? (
+                          <a href={text} target="_blank" rel="noopener noreferrer" className="truncate font-medium text-primary hover:underline sm:text-right">
+                            Open in Google Maps ↗
+                          </a>
+                        ) : (
+                          <span className={cn("font-medium whitespace-pre-wrap break-words sm:text-right", text === "—" && "font-normal text-muted-foreground/70")}>{text}</span>
+                        )}
                       </div>
                     );
                   })}

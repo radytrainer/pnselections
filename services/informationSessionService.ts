@@ -17,6 +17,9 @@ export type InformationSession = {
   reg_expires_at: string | null;
   /** Telegram group invite shown to students after registering. */
   telegram_url: string | null;
+  /** Who gave the session; null on sessions created before this was asked. */
+  presenter_type: PresenterType | null;
+  presenter_name: string | null;
   created_at: string;
   registrations: number;
   girls: number;
@@ -63,7 +66,17 @@ export type SessionInput = {
   regOpen?: boolean;
   regExpiresAt?: string | null;
   telegramUrl?: string | null;
+  presenterType?: PresenterType | null;
+  presenterName?: string | null;
 };
+
+export type PresenterType = "pnc_staff" | "partners" | "alumni";
+export const PRESENTER_TYPES: { value: PresenterType; label: string }[] = [
+  { value: "pnc_staff", label: "PNC Staff" },
+  { value: "partners", label: "Partners" },
+  { value: "alumni", label: "Alumni" },
+];
+export const presenterLabel = (t: PresenterType | null | undefined) => PRESENTER_TYPES.find((p) => p.value === t)?.label ?? null;
 
 export type LinkState = "open" | "closed" | "expired";
 
