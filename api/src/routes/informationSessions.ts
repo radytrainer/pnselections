@@ -76,7 +76,8 @@ informationSessionsRouter.get("/information-sessions", async (req, res) => {
            (select count(*)::int from is_registrations r where r.session_id = s.id) as registrations,
            (select count(*)::int from is_registrations r where r.session_id = s.id and r.gender = 'female') as girls,
            (select count(*)::int from is_registrations r where r.session_id = s.id and r.gender = 'male') as boys,
-           (select count(*)::int from is_registrations r where r.session_id = s.id and r.candidate_id is not null) as added
+           (select count(*)::int from is_registrations r where r.session_id = s.id and r.candidate_id is not null) as added,
+           (select count(*)::int from is_registrations r where r.session_id = s.id and r.from_ngo) as ngo
          from information_sessions s where s.cycle_id = $1
          order by s.session_date desc nulls last, s.created_at desc`,
         [cycleId],
@@ -228,6 +229,9 @@ const regFields = {
   grade: z.string().trim().max(20).nullish(),
   provinceId: uuid.nullish(),
   examCenterId: uuid.nullish(),
+  /** NGO vs non-NGO applicant (migration 0067). */
+  fromNgo: z.boolean().nullish(),
+  ngoName: z.string().trim().max(200).nullish(),
 };
 
 informationSessionsRouter.patch("/is-registrations/:id", async (req, res) => {
@@ -237,6 +241,7 @@ informationSessionsRouter.patch("/is-registrations/:id", async (req, res) => {
   const map: Record<string, string> = {
     firstName: "first_name", lastName: "last_name", gender: "gender", dob: "dob", phone: "phone",
     highSchool: "high_school", grade: "grade", provinceId: "province_id", examCenterId: "exam_center_id",
+    fromNgo: "from_ngo", ngoName: "ngo_name",
   };
   for (const [k, col] of Object.entries(map)) {
     const v = (input as Record<string, unknown>)[k];
@@ -377,6 +382,8 @@ publicRegistrationRouter.post("/register/:token", async (req, res) => {
     grade: pick("grade", 20),
     province_id: pick("provinceId", 36),
     exam_center_id: pick("examCenterId", 36),
+    from_ngo: pick("fromNgo", 3),
+    ngo_name: pick("ngoName", 200),
   };
   const result = await withClaims(PUBLIC_CLAIMS, (db) =>
     db.value<{ ok: boolean; reason?: string; duplicate?: boolean; session_id?: string; telegram_url?: string | null }>("select public_register($1, $2::jsonb)", [t, JSON.stringify(data)]),

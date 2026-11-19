@@ -7,6 +7,7 @@ import { idempotency } from "./idempotency";
 import { errorHandler } from "./errors";
 import { rateLimitHit, redis } from "./redis";
 import { adminRouter, sessionRouter } from "./routes/admin";
+import { applicationsRouter, publicApplicationRouter } from "./routes/applications";
 import { assessmentsRouter } from "./routes/assessments";
 import { writtenExamsRouter } from "./routes/writtenExams";
 import { interviewCentersRouter } from "./routes/interviewCenters";
@@ -81,6 +82,8 @@ export function createApp() {
 
   // Information-session self-registration form (no login; migration 0061).
   app.use("/api/public", publicRegistrationRouter);
+  // Scholarship application form, one link per student (no login; migration 0068).
+  app.use("/api/public", publicApplicationRouter);
 
   const v1 = express.Router();
   v1.use(requireAuth);
@@ -94,6 +97,7 @@ export function createApp() {
   v1.use(writtenExamsRouter);
   v1.use(interviewCentersRouter);
   v1.use(informationSessionsRouter);
+  v1.use(applicationsRouter);
   v1.use(partnersRouter);
   v1.use(reportsRouter);
   v1.use(miscRouter);

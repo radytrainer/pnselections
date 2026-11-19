@@ -24,6 +24,8 @@ const EMPTY: PublicRegistration = {
   grade: "",
   provinceId: "",
   examCenterId: "",
+  fromNgo: "",
+  ngoName: "",
   website: "",
 };
 
@@ -40,6 +42,7 @@ const REASONS: Record<string, string> = {
   school_required: "Please enter your high school. · សូមបញ្ចូលឈ្មោះវិទ្យាល័យ។",
   bad_phone: "Please enter a Smart, Cellcard or Metfone number, e.g. 012 345 678. · សូមបញ្ចូលលេខទូរស័ព្ទ Smart, Cellcard ឬ Metfone។",
   center_required: "Please choose your exam center. · សូមជ្រើសរើសមណ្ឌលប្រឡង។",
+  ngo_required: "Please answer whether you are from an NGO. · សូមឆ្លើយថាតើអ្នកមកពីអង្គការ (NGO) ឬទេ។",
   bad_choice: "Please choose again from the list. · សូមជ្រើសរើសម្តងទៀត។",
   too_many: "Too many registrations from this device. Please wait a few minutes. · សូមរង់ចាំបន្តិច។",
 };
@@ -116,6 +119,7 @@ export default function RegisterPage() {
     if (!values.phone.trim()) return setError(REASONS.phone_required);
     if (!khmerMobile(values.phone)) return setError(REASONS.bad_phone);
     if (!values.highSchool.trim()) return setError(REASONS.school_required);
+    if (!values.fromNgo) return setError(REASONS.ngo_required);
     if (form?.status === "open" && form.centers.length > 0 && !values.examCenterId) return setError(REASONS.center_required);
     setSending(true);
     try {
@@ -319,6 +323,37 @@ export default function RegisterPage() {
               ))}
             </select>
           </div>
+          <fieldset className="space-y-1.5">
+            <legend className="mb-1.5 text-sm font-medium">
+              <span style={{ fontFamily: "var(--font-battambang)" }}>តើអ្នកមកពីអង្គការ (NGO) ឬទេ?</span>{" "}
+              <span className="text-muted-foreground">· Are you from an NGO?</span>
+              <span className="ml-0.5 text-rose-600">*</span>
+            </legend>
+            <div className="grid grid-cols-2 gap-2">
+              {[
+                ["yes", "បាទ/ចាស", "Yes"],
+                ["no", "ទេ", "No"],
+              ].map(([v, km, en]) => (
+                <label
+                  key={v}
+                  className={cn(
+                    "flex cursor-pointer flex-col items-center rounded-md border px-2 py-2 text-sm transition-colors",
+                    values.fromNgo === v ? "border-primary bg-primary/5 font-medium" : "hover:bg-muted",
+                  )}
+                >
+                  <input type="radio" name="fromNgo" value={v} checked={values.fromNgo === v} onChange={set("fromNgo")} className="sr-only" />
+                  <span style={{ fontFamily: "var(--font-battambang)" }}>{km}</span>
+                  <span className="text-xs text-muted-foreground">{en}</span>
+                </label>
+              ))}
+            </div>
+          </fieldset>
+          {values.fromNgo === "yes" && (
+            <div className="space-y-1.5">
+              <Label htmlFor="r-ngo" km="ឈ្មោះអង្គការ" en="NGO name" />
+              <Input id="r-ngo" value={values.ngoName} onChange={set("ngoName")} maxLength={200} className="h-10" placeholder="Name of the NGO" />
+            </div>
+          )}
           {form.centers.length > 0 && (
             <div className="space-y-1.5">
               <Label htmlFor="r-center" km="មណ្ឌលប្រឡង" en="Exam center" required />

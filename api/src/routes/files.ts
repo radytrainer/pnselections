@@ -128,7 +128,10 @@ function sendStored(res: Response, object: StoredObject, cacheControl: string) {
   res.setHeader("Cache-Control", cacheControl);
   res.setHeader("X-Content-Type-Options", "nosniff");
   // Uploaded SVGs are served same-origin: never let one run script if opened directly.
-  res.setHeader("Content-Security-Policy", "default-src 'none'; img-src data:; style-src 'unsafe-inline'; sandbox");
+  // (Not on PDFs — browsers refuse to show a sandboxed PDF; their viewer doesn't run page script.)
+  if (object.contentType !== "application/pdf") {
+    res.setHeader("Content-Security-Policy", "default-src 'none'; img-src data:; style-src 'unsafe-inline'; sandbox");
+  }
   object.body.on("error", () => res.destroy());
   res.on("close", () => object.body.destroy());
   object.body.pipe(res);

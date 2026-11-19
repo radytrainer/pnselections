@@ -1,9 +1,10 @@
 "use client";
 
 import Link from "next/link";
+import { useState } from "react";
 import { toast } from "sonner";
 import type { ColumnDef } from "@tanstack/react-table";
-import { Eye, FileDown, Gavel, HeartHandshake, Mic, School, MoreHorizontal, Pencil, Send, Trash2 } from "lucide-react";
+import { ClipboardList, Eye, FileDown, Gavel, HeartHandshake, Mic, School, MoreHorizontal, Pencil, Send, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import {
@@ -18,14 +19,17 @@ import { StudentAvatar } from "@/components/students/StudentAvatar";
 import { can } from "@/lib/rbac";
 import {
   displayStudentStatus,
+  hasPassedInterview,
   POOR_LEVEL_BADGE_CLASSES,
   STUDENT_STATUS_BADGE_CLASSES,
   type AppRole,
+  studentStatusLabel,
 } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 import { pickLatestPhotoPath } from "@/lib/storage";
 import { softDeleteStudent, type StudentListItem } from "@/services/studentService";
 import { sendToCommittee } from "@/services/committeeService";
+import { ApplicationLinkDialog } from "@/components/applications/ApplicationLinkDialog";
 
 /** Committee isn't relevant until the home visit (social form) is done — these statuses come before it. */
 const PRE_HOME_VISIT_STATUSES = new Set(["registered", "exam_completed", "interview_completed"]);
@@ -92,7 +96,7 @@ export function StudentStatusBadge({ student: s }: { student: StudentListItem })
   const badge = (
     <Badge className={cn("capitalize", STUDENT_STATUS_BADGE_CLASSES[displayStatus] ?? "bg-muted text-muted-foreground")}>
       <span className="size-1.5 rounded-full bg-current opacity-70" aria-hidden />
-      {displayStatus.replace(/_/g, " ")}
+      {studentStatusLabel(displayStatus)}
       {inCommitteeQueue && <Gavel />}
     </Badge>
   );
@@ -134,6 +138,12 @@ export function StudentActions({
 }) {
   const canEdit = can(role, "createEditStudents");
   const fullName = `${s.first_name} ${s.last_name}`;
+  // Scholarship application link/QR (0068) — once the interview is passed.
+  const showApplication = can(role, "manageApplicationLinks") && hasPassedInterview(s.status, s.elimination_reason);
+  const [applicationOpen, setApplicationOpen] = useState(false);
+  const applicationDialog = showApplication ? (
+    <ApplicationLinkDialog student={s} open={applicationOpen} onOpenChange={setApplicationOpen} canManage />
+  ) : null;
   const committeeRelevant = !PRE_HOME_VISIT_STATUSES.has(s.status);
   // home_visit_team only gets the button on cases where they're the
   // one who recorded the social form (see migration 0026) — other
@@ -225,6 +235,12 @@ export function StudentActions({
           <HeartHandshake className="size-4" />
           <span className="truncate">Social form</span>
         </Link>
+        {showApplication && (
+          <Button type="button" variant="outline" size="sm" className={cn(btn, "text-emerald-700 dark:text-emerald-300")} onClick={() => setApplicationOpen(true)}>
+            <ClipboardList className="size-4" />
+            <span className="truncate">Application</span>
+          </Button>
+        )}
         {canSendThisOne && (
           <Button type="button" variant="outline" size="sm" className={btn} onClick={handleSend}>
             <Send className="size-4" />
@@ -238,6 +254,7 @@ export function StudentActions({
           </Link>
         )}
         <div className="shrink-0 sm:ml-auto">{menu}</div>
+        {applicationDialog}
       </div>
     );
   }
@@ -258,6 +275,24 @@ export function StudentActions({
         </TooltipTrigger>
         <TooltipContent>Social Form</TooltipContent>
       </Tooltip>
+      {showApplication && (
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                className="text-muted-foreground hover:text-emerald-600"
+                onClick={() => setApplicationOpen(true)}
+                aria-label="Application form link"
+              />
+            }
+          >
+            <ClipboardList className="size-4" />
+          </TooltipTrigger>
+          <TooltipContent>Application Form (link &amp; QR)</TooltipContent>
+        </Tooltip>
+      )}
       {canSendThisOne && (
         <Tooltip>
           <TooltipTrigger
@@ -277,6 +312,7 @@ export function StudentActions({
         </Tooltip>
       )}
       {menu}
+      {applicationDialog}
     </div>
   );
 }

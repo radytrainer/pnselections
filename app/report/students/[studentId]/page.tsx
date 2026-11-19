@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { StudentAvatar } from "@/components/students/StudentAvatar";
 import { buildSections, buildVac, type Need, type Row } from "@/components/committee/SocialFormSummary";
 import { useAuth } from "@/hooks/useAuth";
-import { displayStudentStatus } from "@/lib/constants";
+import { displayStudentStatus, studentStatusLabel } from "@/lib/constants";
 import { getSignedStudentDocumentUrl, pickLatestPhotoPath } from "@/lib/storage";
 import { fetchReportImage, toReportImage, type ReportImage } from "./reportImages";
 import type { ReportModel, ReportRating, ReportRow } from "./reportDocx";
@@ -233,7 +233,7 @@ function ReportBody({
             <Field label="Address" value={address} wide />
             <Field label="School" value={s.school_partners?.school_name} />
             <Field label="Referred by" value={data.ngoName} />
-            <Field label="Current status" value={displayStudentStatus(s.status, s.elimination_reason).replace(/_/g, " ")} capitalize />
+            <Field label="Current status" value={studentStatusLabel(displayStudentStatus(s.status, s.elimination_reason))} capitalize />
           </dl>
         </div>
       </section>
@@ -613,7 +613,7 @@ function buildReportModel(data: Data, visit: SocialAssessmentRow | null, fullNam
         { label: "Address", value: address },
         { label: "School", value: s.school_partners?.school_name ?? "" },
         { label: "Referred by", value: data.ngoName ?? "" },
-        { label: "Current status", value: displayStudentStatus(s.status, s.elimination_reason).replace(/_/g, " ") },
+        { label: "Current status", value: studentStatusLabel(displayStudentStatus(s.status, s.elimination_reason)) },
       ],
     },
     visit: visitModel,

@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { ID_TOKEN_COOKIE } from "@/lib/constants";
 
-const PUBLIC_PATHS = ["/login", "/register/", "/offline", "/manifest.webmanifest", "/sw.js", "/icons", "/brand"];
+const PUBLIC_PATHS = ["/login", "/register/", "/apply/", "/offline", "/manifest.webmanifest", "/sw.js", "/icons", "/brand"];
 
 /**
  * UX-level route gating only — presence-checks the session cookie to avoid

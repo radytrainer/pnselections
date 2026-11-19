@@ -55,6 +55,7 @@ import { HEALTH_OPTS, MAJOR_OPTS, labelFor } from "@/features/social-form/labels
 import { StudentAvatar } from "@/components/students/StudentAvatar";
 import { pickLatestPhotoPath } from "@/lib/storage";
 import { cn } from "@/lib/utils";
+import { studentStatusLabel } from "@/lib/constants";
 
 const POOR_LEVELS = ["A+", "A", "A-", "B+", "B", "B-"] as const;
 type PoorLevel = (typeof POOR_LEVELS)[number];
@@ -216,7 +217,7 @@ export default function CommitteeDossierPage() {
         </div>
         <div className="flex flex-col items-end gap-2">
           <div className="flex items-center gap-2">
-            <Badge className="capitalize">{student.status.replace(/_/g, " ")}</Badge>
+            <Badge className="capitalize">{studentStatusLabel(student.status)}</Badge>
             {student.photo_drive_url && (
               <a
                 href={student.photo_drive_url}

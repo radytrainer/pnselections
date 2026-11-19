@@ -16,45 +16,7 @@ import {
   type InformationSession,
 } from "@/services/informationSessionService";
 import { cn } from "@/lib/utils";
-
-/** "2026-04-01T08:00" (local) for <input type="datetime-local"> from an ISO time. */
-function toLocalInput(iso: string | null) {
-  if (!iso) return "";
-  const d = new Date(iso);
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
-
-function fileSafe(name: string) {
-  return name.replace(/[\\/:*?"<>|]+/g, "").replace(/\s+/g, "_").slice(0, 80) || "session";
-}
-
-/** QR code with the session name under it, as a PNG data URL (for download/print). */
-async function captionedQr(url: string, title: string, subtitle: string) {
-  const QR = await import("qrcode");
-  const qr = await QR.toDataURL(url, { width: 640, margin: 2, errorCorrectionLevel: "M" });
-  const img = new Image();
-  img.src = qr;
-  await img.decode();
-  const canvas = document.createElement("canvas");
-  canvas.width = 720;
-  canvas.height = 860;
-  const ctx = canvas.getContext("2d")!;
-  ctx.fillStyle = "#fff";
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-  ctx.drawImage(img, 40, 30, 640, 640);
-  ctx.fillStyle = "#111";
-  ctx.textAlign = "center";
-  ctx.font = "bold 34px sans-serif";
-  ctx.fillText(title.length > 36 ? title.slice(0, 35) + "…" : title, 360, 720);
-  ctx.font = "24px sans-serif";
-  ctx.fillStyle = "#444";
-  ctx.fillText(subtitle, 360, 762);
-  ctx.font = "20px sans-serif";
-  ctx.fillStyle = "#777";
-  ctx.fillText("Scan to register · ស្កេនដើម្បីចុះឈ្មោះ", 360, 810);
-  return canvas.toDataURL("image/png");
-}
+import { captionedQr, downloadDataUrl, fileSafe, printQrImage, qrDataUrl, toLocalInput } from "@/lib/qr";
 
 export function RegistrationLinkCard({ session, onChanged }: { session: InformationSession; onChanged: () => Promise<void> | void }) {
   const url = registrationUrl(session.reg_token);
@@ -68,8 +30,7 @@ export function RegistrationLinkCard({ session, onChanged }: { session: Informat
 
   useEffect(() => {
     let stale = false;
-    import("qrcode")
-      .then((QR) => QR.toDataURL(url, { width: 360, margin: 1, errorCorrectionLevel: "M" }))
+    qrDataUrl(url)
       .then((d) => !stale && setQr(d))
       .catch(() => !stale && setQr(null));
     return () => {
@@ -94,22 +55,14 @@ export function RegistrationLinkCard({ session, onChanged }: { session: Informat
     .filter(Boolean)
     .join(" · ");
 
+  const footer = "Scan to register · ស្កេនដើម្បីចុះឈ្មោះ";
+
   async function downloadQr() {
-    const data = await captionedQr(url, session.name, subtitle);
-    const a = document.createElement("a");
-    a.href = data;
-    a.download = `QR_${fileSafe(session.name)}.png`;
-    a.click();
+    downloadDataUrl(await captionedQr(url, session.name, subtitle, footer), `QR_${fileSafe(session.name, "session")}.png`);
   }
 
   async function printQr() {
-    const data = await captionedQr(url, session.name, subtitle);
-    const w = window.open("", "_blank");
-    if (!w) return toast.error("Allow pop-ups to print the QR code");
-    w.document.write(
-      `<!doctype html><title>QR – ${session.name.replace(/</g, "&lt;")}</title><style>@page{margin:12mm}body{margin:0;display:flex;justify-content:center;align-items:center;min-height:95vh}img{width:150mm;max-width:100%}</style><img src="${data}" onload="setTimeout(()=>{window.print()},100)">`,
-    );
-    w.document.close();
+    if (!printQrImage(await captionedQr(url, session.name, subtitle, footer), session.name)) toast.error("Allow pop-ups to print the QR code");
   }
 
   const expiryChanged = expiry !== toLocalInput(session.reg_expires_at);

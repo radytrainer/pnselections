@@ -35,6 +35,15 @@ export function advanceStatus(current: StudentStatus, target: StudentStatus): St
   return STUDENT_STATUSES.indexOf(target) > STUDENT_STATUSES.indexOf(current) ? target : current;
 }
 
+/**
+ * Display text for a student status (lowercase; pages capitalize it).
+ * interview_completed is only ever set when the interview is passed (A1/A2 —
+ * a failed interview eliminates, migration 0058), so it reads "passed interview".
+ */
+export function studentStatusLabel(status: string): string {
+  return status === "interview_completed" ? "passed interview" : status.replace(/_/g, " ");
+}
+
 /** One color per pipeline stage/outcome so a status is recognizable at a glance, without reading the label. Shared by the Students table and the student profile page. */
 export const STUDENT_STATUS_BADGE_CLASSES: Record<StudentStatus, string> = {
   registered: "bg-slate-100 text-slate-700",
@@ -79,6 +88,15 @@ export const INTERVIEW_FAIL_REASON = "Did not pass the Motivation Interview";
 export function isOutOfProcess(status: string, eliminationReason: string | null | undefined): boolean {
   if (status !== "eliminated" || !eliminationReason) return false;
   return eliminationReason.startsWith(EXAM_FAIL_REASON_PREFIX) || eliminationReason === INTERVIEW_FAIL_REASON;
+}
+
+/**
+ * Passed the Motivation Interview (and still in the process): any status from
+ * "passed interview" on, except an exam/interview elimination. Matches the
+ * API's check before it creates a scholarship application link (0068).
+ */
+export function hasPassedInterview(status: string, eliminationReason: string | null | undefined): boolean {
+  return status !== "registered" && status !== "exam_completed" && !isOutOfProcess(status, eliminationReason);
 }
 
 /** Scholarship eligibility age window — committee decisions are flagged outside this range. */

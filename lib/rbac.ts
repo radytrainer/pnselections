@@ -28,6 +28,9 @@ export const CAPABILITIES = {
   sendToCommittee: ["super_admin", "program_manager", "selection_team", "home_visit_team"],
   enterExamScores: ["super_admin", "program_manager", "selection_team"],
   enterInterviewScores: ["super_admin", "program_manager", "interview_team", "selection_team"],
+  // Scholarship application link/QR for students who passed the interview
+  // (migration 0068 — same roles as the scholarship_applications write policies).
+  manageApplicationLinks: ["super_admin", "program_manager", "selection_team", "interview_team"],
   enterHomeVisitData: ["super_admin", "program_manager", "home_visit_team", "selection_team"],
   recordCommitteeDecision: ["super_admin", "program_manager", "selection_team"],
   rateCommitteeCandidate: ["committee_member"],

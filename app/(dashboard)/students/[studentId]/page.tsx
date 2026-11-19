@@ -8,6 +8,7 @@ import {
   ArrowLeft,
   Award,
   Check,
+  ClipboardList,
   FileText,
   FolderOpen,
   GraduationCap,
@@ -26,7 +27,9 @@ import { getInterviewSummary, type InterviewSummary } from "@/services/interview
 import { sendToCommittee } from "@/services/committeeService";
 import { getMyProfile } from "@/services/userService";
 import { CATEGORY_BADGE_CLASSES, CATEGORY_LABELS, isFailedHomeVisit } from "@/features/social-form/scoring";
-import { displayStudentStatus, STUDENT_STATUSES, STUDENT_STATUS_BADGE_CLASSES } from "@/lib/constants";
+import { displayStudentStatus, hasPassedInterview, STUDENT_STATUSES, STUDENT_STATUS_BADGE_CLASSES, studentStatusLabel } from "@/lib/constants";
+import { ApplicationLinkPanel, useStudentApplication } from "@/components/applications/ApplicationLinkPanel";
+import { ApplicationAnswers } from "@/components/applications/ApplicationAnswers";
 import { StudentAvatar } from "@/components/students/StudentAvatar";
 import { pickLatestPhotoPath } from "@/lib/storage";
 import {
@@ -168,6 +171,14 @@ export default function StudentDetailPage() {
   const [interviewSummary, setInterviewSummary] = useState<InterviewSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [sendingToCommittee, setSendingToCommittee] = useState(false);
+  const { application, reload: reloadApplication } = useStudentApplication(params.studentId);
+  const [tab, setTab] = useState("overview");
+
+  // ?tab=application (from the Students list's application dialog) opens that tab.
+  useEffect(() => {
+    const t = new URLSearchParams(window.location.search).get("tab");
+    if (t) setTab(t);
+  }, []);
 
   const load = useCallback(() => {
     return getStudent(params.studentId)
@@ -224,6 +235,7 @@ export default function StudentDetailPage() {
   const photoPath = pickLatestPhotoPath(student.student_documents);
   // home_visit_team only gets this button on cases where they're the one
   // who recorded the social form (see migration 0026).
+  const showApplicationTab = hasPassedInterview(student.status, student.elimination_reason) || !!application;
   const canSendToCommittee =
     can(role, "sendToCommittee") &&
     (role !== "home_visit_team" || student.social_assessments.some((sa) => sa.visitor_id === myUserId));
@@ -265,7 +277,7 @@ export default function StudentDetailPage() {
                       STUDENT_STATUS_BADGE_CLASSES[displayStatus] ?? "bg-muted text-muted-foreground",
                     )}
                   >
-                    {displayStatus.replace(/_/g, " ")}
+                    {studentStatusLabel(displayStatus)}
                   </Badge>
                   {stillPending && (
                     <p className="mt-1 text-xs text-muted-foreground">Awaiting committee decision</p>
@@ -302,7 +314,7 @@ export default function StudentDetailPage() {
         </CardContent>
       </Card>
 
-      <Tabs defaultValue="overview">
+      <Tabs value={tab} onValueChange={(v) => setTab(String(v))}>
         <div className="scrollbar-hide -mx-1 overflow-x-auto px-1">
           <TabsList>
             <TabsTrigger value="overview" className="gap-1.5">
@@ -321,6 +333,13 @@ export default function StudentDetailPage() {
               <HeartHandshake className="size-4" />
               Social Form
             </TabsTrigger>
+            {showApplicationTab && (
+              <TabsTrigger value="application" className="gap-1.5">
+                <ClipboardList className="size-4" />
+                Application
+                {application?.submitted_at && <span className="size-1.5 rounded-full bg-emerald-500" aria-label="submitted" />}
+              </TabsTrigger>
+            )}
             <TabsTrigger value="documents" className="gap-1.5">
               <FolderOpen className="size-4" />
               Documents
@@ -520,6 +539,36 @@ export default function StudentDetailPage() {
             </Link>
           </RoleGate>
         </TabsContent>
+
+        {showApplicationTab && (
+          <TabsContent value="application" className="mt-4 space-y-4">
+            <Card>
+              <CardHeader>
+                <div className="flex items-center gap-2">
+                  <ClipboardList className="size-4 text-primary" />
+                  <CardTitle>Scholarship application form</CardTitle>
+                </div>
+                <CardDescription>
+                  {student.first_name}&apos;s personal link and QR code to fill the application (ពាក្យស្នើរសុំអាហារូបករណ៍), upload a photo and attach up to 5 documents.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <ApplicationLinkPanel
+                  studentId={student.id}
+                  studentName={`${student.first_name} ${student.last_name}`}
+                  studentCode={student.student_code}
+                  application={application}
+                  reload={async () => {
+                    await reloadApplication();
+                    load();
+                  }}
+                  canManage={can(role, "manageApplicationLinks")}
+                />
+              </CardContent>
+            </Card>
+            {application && <ApplicationAnswers application={application} />}
+          </TabsContent>
+        )}
 
         <TabsContent value="documents" className="mt-4">
           <Card>

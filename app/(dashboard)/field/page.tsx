@@ -12,7 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useAuth } from "@/hooks/useAuth";
 import { useOfflineStatus } from "@/hooks/useOfflineStatus";
 import { useRole } from "@/hooks/useRole";
-import { displayStudentStatus, isOutOfProcess, STUDENT_STATUS_BADGE_CLASSES, type StudentStatus } from "@/lib/constants";
+import { displayStudentStatus, isOutOfProcess, studentStatusLabel, STUDENT_STATUS_BADGE_CLASSES, type StudentStatus } from "@/lib/constants";
 import { downloadForOffline, getBundleInfo, getDownloadedStudents, type BundleInfo } from "@/lib/offline/bundle";
 import type { OfflineStudent } from "@/lib/offline/fallback";
 import { takeFlash } from "@/lib/offline/store";
@@ -224,7 +224,7 @@ export default function FieldModePage() {
                         {s.first_name} {s.last_name}
                       </span>
                       <span className={cn("rounded-full px-2 py-0.5 text-xs", STUDENT_STATUS_BADGE_CLASSES[status])}>
-                        {status.replace(/_/g, " ")}
+                        {studentStatusLabel(status)}
                       </span>
                       {waiting && (
                         <Badge variant="outline" className="border-sky-300 text-sky-700">

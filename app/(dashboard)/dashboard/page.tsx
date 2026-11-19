@@ -108,7 +108,7 @@ const DECISIONS: {
 const PIPELINE: { status: StudentStatus; label: string }[] = [
   { status: "registered", label: "Registered" },
   { status: "exam_completed", label: "Exam done" },
-  { status: "interview_completed", label: "Interview done" },
+  { status: "interview_completed", label: "Passed interview" },
   { status: "home_visit_completed", label: "Home visit done" },
   { status: "committee_review", label: "Committee review" },
 ];

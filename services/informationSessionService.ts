@@ -23,6 +23,8 @@ export type InformationSession = {
   boys: number;
   /** Registrations already added to the exam candidates. */
   added: number;
+  /** Registrations from an NGO. */
+  ngo: number;
 };
 
 export type IsRegistration = {
@@ -39,6 +41,9 @@ export type IsRegistration = {
   province_name: string | null;
   exam_center_id: string | null;
   exam_center_name: string | null;
+  /** From an NGO? null = registered before the question was asked. */
+  from_ngo: boolean | null;
+  ngo_name: string | null;
   candidate_id: string | null;
   exam_number: string | null;
   /** Exam no. of an existing candidate with the same name + birth date (not yet added). */
@@ -110,6 +115,8 @@ export function updateRegistration(
     grade: string | null;
     provinceId: string | null;
     examCenterId: string | null;
+    fromNgo: boolean | null;
+    ngoName: string | null;
   }>,
 ) {
   return api.patch(`/api/v1/is-registrations/${id}`, input);
@@ -172,6 +179,9 @@ export type PublicRegistration = {
   grade: string;
   provinceId: string;
   examCenterId: string;
+  /** "yes" | "no" ("" until answered). */
+  fromNgo: string;
+  ngoName: string;
   website: string;
 };
 

@@ -35,7 +35,7 @@ import { RoleGate } from "@/components/layout/RoleGate";
 import { useAuth } from "@/hooks/useAuth";
 import { useCycleFilter } from "@/hooks/useCycleFilter";
 import { useRole } from "@/hooks/useRole";
-import { STUDENT_STATUSES } from "@/lib/constants";
+import { STUDENT_STATUSES, studentStatusLabel } from "@/lib/constants";
 import { can } from "@/lib/rbac";
 import { listInterviewCenters, type InterviewCenter } from "@/services/interviewCenterService";
 import { InterviewCentersDialog } from "@/components/students/InterviewCentersDialog";
@@ -454,7 +454,7 @@ export default function StudentsPage() {
             <SelectTrigger className={cn(selectTriggerClass, status && "border-primary/40 bg-primary/5")}>
               <SelectValue placeholder="All statuses">
                 {(value: string) => (
-                  <span className="capitalize">{value ? value.replace(/_/g, " ") : "All statuses"}</span>
+                  <span className="capitalize">{value ? studentStatusLabel(value) : "All statuses"}</span>
                 )}
               </SelectValue>
             </SelectTrigger>
@@ -462,7 +462,7 @@ export default function StudentsPage() {
               <SelectItem value="">All statuses</SelectItem>
               {STUDENT_STATUSES.map((s) => (
                 <SelectItem key={s} value={s}>
-                  <span className="capitalize">{s.replace(/_/g, " ")}</span>
+                  <span className="capitalize">{studentStatusLabel(s)}</span>
                 </SelectItem>
               ))}
             </SelectContent>

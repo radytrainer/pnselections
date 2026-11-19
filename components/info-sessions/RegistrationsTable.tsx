@@ -21,6 +21,8 @@ import {
 
 const GENDER: Record<IsRegistration["gender"], string> = { female: "Female", male: "Male", "lgbtqia+": "LGBTQIA+" };
 const NONE = "__none__";
+type NgoFilter = "all" | "ngo" | "non" | "unknown";
+const ngoLabel = (v: boolean | null) => (v === true ? "NGO" : v === false ? "Non-NGO" : "");
 
 export function RegistrationsTable({
   session,
@@ -36,17 +38,23 @@ export function RegistrationsTable({
   reload: () => Promise<void>;
 }) {
   const [q, setQ] = useState("");
+  const [ngoFilter, setNgoFilter] = useState<NgoFilter>("all");
   const [selected, setSelected] = useState<Record<string, boolean>>({});
   const [busy, setBusy] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<null | { kind: "add" | "remove"; ids: string[] }>(null);
 
   const filtered = useMemo(() => {
     const s = q.trim().toLowerCase();
-    if (!s) return rows;
-    return rows.filter((r) =>
-      [r.first_name, r.last_name, r.high_school, r.phone, r.exam_center_name, r.exam_number].some((v) => (v ?? "").toLowerCase().includes(s)),
-    );
-  }, [rows, q]);
+    return rows.filter((r) => {
+      if (ngoFilter === "ngo" && r.from_ngo !== true) return false;
+      if (ngoFilter === "non" && r.from_ngo !== false) return false;
+      if (ngoFilter === "unknown" && r.from_ngo !== null) return false;
+      return !s || [r.first_name, r.last_name, r.high_school, r.phone, r.exam_center_name, r.exam_number, r.ngo_name].some((v) => (v ?? "").toLowerCase().includes(s));
+    });
+  }, [rows, q, ngoFilter]);
+  const ngoCount = rows.filter((r) => r.from_ngo === true).length;
+  const nonNgoCount = rows.filter((r) => r.from_ngo === false).length;
+  const unknownCount = rows.length - ngoCount - nonNgoCount;
   const selectedIds = filtered.filter((r) => selected[r.id]).map((r) => r.id);
   const notAdded = rows.filter((r) => !r.candidate_id);
   const allChecked = filtered.length > 0 && filtered.every((r) => selected[r.id]);
@@ -68,7 +76,7 @@ export function RegistrationsTable({
   }
 
   function exportXlsx() {
-    const header = ["Registered", "First name", "Last name", "Gender", "Date of birth", "Phone", "High school", "Grade", "Province", "Exam center", "Exam no."];
+    const header = ["Registered", "First name", "Last name", "Gender", "Date of birth", "Phone", "High school", "Grade", "Province", "Exam center", "NGO", "NGO name", "Exam no."];
     const body = rows.map((r) => [
       new Date(r.created_at).toLocaleString(),
       r.first_name,
@@ -80,10 +88,12 @@ export function RegistrationsTable({
       r.grade ?? "",
       r.province_name ?? "",
       r.exam_center_name ?? "",
+      ngoLabel(r.from_ngo),
+      r.ngo_name ?? "",
       r.exam_number ?? "",
     ]);
     const file = `Registrations_${session.name.replace(/[\\/:*?"<>|]+/g, "").replace(/\s+/g, "_").slice(0, 60)}.xlsx`;
-    downloadXlsxBook(file, [{ name: "Registrations", rows: [header, ...body], widths: [18, 16, 16, 10, 12, 14, 26, 7, 16, 18, 9], filterRow: 0, textColumns: [5, 10] }]).catch(() =>
+    downloadXlsxBook(file, [{ name: "Registrations", rows: [header, ...body], widths: [18, 16, 16, 10, 12, 14, 26, 7, 16, 18, 9, 22, 9], filterRow: 0, textColumns: [5, 12] }]).catch(() =>
       toast.error("Couldn't create the Excel file"),
     );
   }
@@ -93,9 +103,26 @@ export function RegistrationsTable({
   return (
     <div className="space-y-3">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <div className="relative w-full sm:w-64">
-          <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
-          <Input aria-label="Search registrations" placeholder="Search name, school, phone" value={q} onChange={(e) => setQ(e.target.value)} className="pl-9" />
+        <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
+          <div className="relative w-full sm:w-64">
+            <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Input aria-label="Search registrations" placeholder="Search name, school, phone, NGO" value={q} onChange={(e) => setQ(e.target.value)} className="pl-9" />
+          </div>
+          <Select value={ngoFilter} onValueChange={(v) => setNgoFilter((v as NgoFilter) ?? "all")}>
+            <SelectTrigger className="w-full sm:w-44" aria-label="Filter by NGO">
+              <SelectValue>
+                {(v: string) =>
+                  v === "ngo" ? `NGO (${ngoCount})` : v === "non" ? `Non-NGO (${nonNgoCount})` : v === "unknown" ? `Not asked (${unknownCount})` : `All (${rows.length})`
+                }
+              </SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All ({rows.length})</SelectItem>
+              <SelectItem value="ngo">NGO ({ngoCount})</SelectItem>
+              <SelectItem value="non">Non-NGO ({nonNgoCount})</SelectItem>
+              {unknownCount > 0 && <SelectItem value="unknown">Not asked ({unknownCount})</SelectItem>}
+            </SelectContent>
+          </Select>
         </div>
         <div className="flex flex-wrap gap-2">
           <Button disabled={addIds.length === 0} onClick={() => setConfirm({ kind: "add", ids: addIds })}>
@@ -127,7 +154,7 @@ export function RegistrationsTable({
         </p>
       ) : (
         <div className="overflow-x-auto rounded-lg border">
-          <table className="w-full min-w-[760px] text-sm">
+          <table className="w-full min-w-[880px] text-sm">
             <thead className="bg-muted/50 text-left text-xs text-muted-foreground uppercase">
               <tr>
                 <th className="w-10 px-3 py-2">
@@ -141,6 +168,7 @@ export function RegistrationsTable({
                 <th className="px-3 py-2 font-medium">Gender</th>
                 <th className="px-3 py-2 font-medium">High school · province</th>
                 <th className="px-3 py-2 font-medium">Phone</th>
+                <th className="px-3 py-2 font-medium">NGO</th>
                 <th className="px-3 py-2 font-medium">Exam center</th>
                 <th className="px-3 py-2 font-medium">Status</th>
               </tr>
@@ -166,6 +194,32 @@ export function RegistrationsTable({
                     <p className="text-xs text-muted-foreground">{r.province_name ?? ""}</p>
                   </td>
                   <td className="px-3 py-2 tabular-nums">{r.phone || "—"}</td>
+                  <td className="px-3 py-2">
+                    <Select
+                      value={r.from_ngo === true ? "yes" : r.from_ngo === false ? "no" : NONE}
+                      onValueChange={(v) =>
+                        run(`ngo-${r.id}`, async () => {
+                          const fromNgo = v === "yes" ? true : v === "no" ? false : null;
+                          await updateRegistration(r.id, { fromNgo, ...(fromNgo ? {} : { ngoName: null }) });
+                          return "NGO updated";
+                        })
+                      }
+                    >
+                      <SelectTrigger size="sm" className="w-28" aria-label={`NGO for ${r.first_name} ${r.last_name}`}>
+                        <SelectValue>{(v: string) => (v === "yes" ? "NGO" : v === "no" ? "Non-NGO" : "Not asked")}</SelectValue>
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="yes">NGO</SelectItem>
+                        <SelectItem value="no">Non-NGO</SelectItem>
+                        <SelectItem value={NONE}>Not asked</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    {r.ngo_name && (
+                      <p className="mt-0.5 max-w-36 truncate text-xs text-muted-foreground" title={r.ngo_name}>
+                        {r.ngo_name}
+                      </p>
+                    )}
+                  </td>
                   <td className="px-3 py-2">
                     {r.candidate_id ? (
                       r.exam_center_name ?? "—"

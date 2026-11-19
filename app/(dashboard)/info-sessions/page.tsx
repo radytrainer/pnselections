@@ -150,6 +150,7 @@ export default function InformationSessionsPage() {
       regs: list.reduce((n, s) => n + s.registrations, 0),
       girls: list.reduce((n, s) => n + s.girls, 0),
       boys: list.reduce((n, s) => n + s.boys, 0),
+      ngo: list.reduce((n, s) => n + (s.ngo ?? 0), 0),
       added: list.reduce((n, s) => n + s.added, 0),
     };
   }, [sessions]);
@@ -186,7 +187,7 @@ export default function InformationSessionsPage() {
       <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
         <Tile icon={<Megaphone className="size-3.5" />} label="Sessions" value={totals.sessions} />
         <Tile icon={<Link2 className="size-3.5" />} label="Links open" value={totals.open} note={`of ${totals.sessions}`} />
-        <Tile icon={<Users className="size-3.5" />} label="Registrations" value={totals.regs} note={`${totals.girls} girls · ${totals.boys} boys`} />
+        <Tile icon={<Users className="size-3.5" />} label="Registrations" value={totals.regs} note={`${totals.girls} girls · ${totals.boys} boys · ${totals.ngo} NGO`} />
         <Tile icon={<Users className="size-3.5" />} label="Added to candidates" value={totals.added} note={`${totals.regs - totals.added} waiting`} />
       </div>
 
@@ -292,7 +293,7 @@ export default function InformationSessionsPage() {
 
               <div className="space-y-2">
                 <h3 className="font-medium">
-                  Registrations <span className="font-normal text-muted-foreground">({selected.registrations} · {selected.girls} girls · {selected.boys} boys)</span>
+                  Registrations <span className="font-normal text-muted-foreground">({selected.registrations} · {selected.girls} girls · {selected.boys} boys · {selected.ngo ?? 0} NGO)</span>
                 </h3>
                 <RegistrationsTable session={selected} rows={regs} centers={centers} loading={regsLoading} reload={refreshAll} />
               </div>
